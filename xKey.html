@@ -1,0 +1,230 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Exquis Fingering Explorer — MVP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#fafafa; --ink:#222; --grid:#888; --on:#6aa5ff; --on2:#ffad66; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg);
+           display:grid; grid-template-columns: 280px 1fr; height:100vh;}
+    aside { padding:14px; border-right:1px solid #ddd; overflow:auto;}
+    h3 { margin:.3rem 0 .6rem; font-size:1rem; }
+    label { display:block; margin:.25rem 0; font-size:.95rem; }
+    select, input[type="number"] { width:100%; padding:.4rem; margin:.25rem 0 .6rem; }
+    .sep { height:1px; background:#e7e7e7; margin:.8rem 0; }
+    #grid { width:100%; height:100%; display:block;}
+    .pad { cursor:default; }
+    .pad.on { fill: var(--on); fill-opacity: .28; }
+    .pad.on.chord { fill: var(--on2); fill-opacity: .35; }
+    .label { font-size:10px; fill:var(--ink); pointer-events:none; }
+    .fing { font-size:10px; font-weight:700; fill:#111; }
+    .legend { font-size: .85rem; color:#444; }
+  </style>
+</head>
+<body>
+  <aside>
+    <h3>Orientation</h3>
+    <label><input type="radio" name="ori" value="portrait" checked> Portrait (peaks up)</label>
+    <label><input type="radio" name="ori" value="landscape"> Landscape (flats up)</label>
+
+    <div class="sep"></div>
+    <h3>Key / Set</h3>
+    <label>Key
+      <select id="key">
+        <option>C</option><option>C#</option><option>D</option><option>Eb</option>
+        <option>E</option><option>F</option><option>F#</option><option>G</option>
+        <option>Ab</option><option>A</option><option>Bb</option><option>B</option>
+      </select>
+    </label>
+    <label>Type
+      <select id="set">
+        <option value="maj">Major scale</option>
+        <option value="natmin">Natural minor</option>
+        <option value="majtriad">Major triad</option>
+        <option value="min7">Minor 7th</option>
+        <option value="dom7">Dominant 7th</option>
+        <option value="custom">Custom (PCs)</option>
+      </select>
+    </label>
+    <label>Custom pitch classes (0–11, comma-separated)
+      <input id="customPC" placeholder="e.g. 0,2,4,5,7,9,11" />
+    </label>
+    <label>Base MIDI (row0 pad0)
+      <input id="baseMidi" type="number" value="48" min="0" max="120" />
+    </label>
+
+    <div class="sep"></div>
+    <h3>Labels</h3>
+    <label><input type="radio" name="lab" value="pc" checked> Pitch class (0–11)</label>
+    <label><input type="radio" name="lab" value="note"> Note names</label>
+    <label><input type="radio" name="lab" value="midi"> MIDI number</label>
+
+    <div class="sep"></div>
+    <p class="legend">
+      Even rows have 6 pads, odd rows 5 pads.<br>
+      Row starts (pad index): 0, 4, 7, 11, 14, 18, 21, 25, 28, 32, 35.<br>
+      midi = baseMidi + padIndex.
+    </p>
+  </aside>
+
+  <svg id="grid" aria-label="Exquis hex grid"></svg>
+
+  <script type="module">
+    // ---------- Exquis lattice (from your clarification) ----------
+    // 11 rows, lengths alternate: 6,5,6,5,...; row start pad indexes:
+    // 0,4,7,11,14,18,21,25,28,32,35 (increments +4,+3,...)
+    const ROW_COUNT = 11;
+    const ROW_LENGTH = r => (r % 2 === 0 ? 6 : 5);
+    const ROW_START = (() => {
+      const starts = [0];
+      for (let r = 1; r < ROW_COUNT; r++) {
+        const prev = starts[r-1];
+        starts.push(prev + ( (r-1) % 2 === 0 ? 4 : 3 )); // +4, +3 alternating
+      }
+      return starts; // [0,4,7,11,14,18,21,25,28,32,35]
+    })();
+
+    // padIndex = ROW_START[row] + col; MIDI = baseMidi + padIndex
+    const padIndex = (row, col) => ROW_START[row] + col;
+
+    // ---------- Music theory helpers ----------
+    const NOTE_TO_PC = { C:0,'C#':1,Db:1,D:2,'D#':3,Eb:3,E:4,F:5,'F#':6,Gb:6,G:7,'G#':8,Ab:8,A:9,'A#':10,Bb:10,B:11 };
+    const PC_TO_NOTE_SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+    const SETS = {
+      maj:    [0,2,4,5,7,9,11],
+      natmin: [0,2,3,5,7,8,10],
+      majtriad:[0,4,7],
+      min7:   [0,3,7,10],
+      dom7:   [0,4,7,10]
+    };
+
+    function pcsForSelection() {
+      const key = document.getElementById('key').value;
+      const typ = document.getElementById('set').value;
+      if (typ === 'custom') {
+        const txt = document.getElementById('customPC').value.trim();
+        const pcs = new Set();
+        if (txt) txt.split(',').forEach(s => {
+          const n = Number(s.trim());
+          if (!Number.isNaN(n)) pcs.add(((n%12)+12)%12);
+        });
+        return pcs;
+      }
+      const root = NOTE_TO_PC[key];
+      const pcs = new Set();
+      for (const n of SETS[typ]) pcs.add((root + n) % 12);
+      return pcs;
+    }
+
+    function labelText(kind, midi) {
+      const pc = ((midi % 12)+12)%12;
+      if (kind === 'pc')   return pc;
+      if (kind === 'note') return PC_TO_NOTE_SHARP[pc];
+      return midi; // 'midi'
+    }
+
+    // ---------- Rendering ----------
+    const svg = document.getElementById('grid');
+
+    // Geometry: portrait (pointy-top) vs landscape (flat-top)
+    const GEO = {
+      portrait: { size: 22, w: 38, h: 33 }
+    };
+
+    function hexPoints(cx, cy, s){
+      // pointy-top hex (portrait). Landscape will be achieved by rotating the whole group.
+      const A = [[0,-s],[+0.866*s,-0.5*s],[+0.866*s,+0.5*s],[0,+s],[-0.866*s,+0.5*s],[-0.866*s,-0.5*s]];
+      return A.map(([dx,dy]) => `${cx+dx},${cy+dy}`).join(' ');
+    }
+
+    // Visual staggering: compute portrait (pointy-top) centers always.
+    function cellCenter(row, col) {
+      const g = GEO.portrait; // portrait geometry
+      const x = col * g.w + (row % 2 ? g.w/2 : 0) + 48;
+      const y = (ROW_COUNT-1-row) * g.h + 48; // bottom row = row 0
+      return [x, y];
+    }
+
+    function draw() {
+      const portrait = document.querySelector('input[name="ori"]:checked').value === 'portrait';
+      const baseMidi = Number(document.getElementById('baseMidi').value) || 48;
+      const labKind = document.querySelector('input[name="lab"]:checked').value;
+      const pcs = pcsForSelection();
+
+      // We'll draw once in portrait coordinates, then rotate the whole group if landscape.
+      const vbW_p = (6*GEO.portrait.w + 120);
+      const vbH_p = (ROW_COUNT*GEO.portrait.h + 120);
+
+      // Set viewBox depending on orientation
+      if (portrait) {
+        svg.setAttribute('viewBox', `0 0 ${vbW_p} ${vbH_p}`);
+      } else {
+        // swap width/height for 90° rotation
+        svg.setAttribute('viewBox', `0 0 ${vbH_p} ${vbW_p}`);
+      }
+      svg.innerHTML = '';
+
+      // Create a group to hold all pads/labels; rotate it for landscape
+      const gNode = document.createElementNS('http://www.w3.org/2000/svg','g');
+      if (!portrait) {
+        // After rotate(90) around origin, content lies in x:[-vbH_p,0], y:[0,vbW_p].
+        // Translate right by vbH_p to fit the swapped viewBox.
+        gNode.setAttribute('transform', `translate(${vbH_p},0) rotate(90)`);
+      }
+
+      for (let r = 0; r < ROW_COUNT; r++) {
+        const cols = ROW_LENGTH(r);
+        for (let c = 0; c < cols; c++) {
+          const [cx, cy] = cellCenter(r, c);
+          const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+          poly.setAttribute('points', hexPoints(cx, cy, GEO.portrait.size));
+          poly.setAttribute('class', 'pad');
+          poly.setAttribute('stroke', '#666');
+          poly.setAttribute('fill', '#6aa5ff');
+          poly.setAttribute('fill-opacity', '0.12');
+
+          const pIndex = padIndex(r, c);
+          const midi = baseMidi + pIndex;
+          const pc = ((midi%12)+12)%12;
+
+          if (pcs.has(pc)) poly.classList.add('on');
+
+          gNode.appendChild(poly);
+
+          const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+          t.setAttribute('x', cx);
+          t.setAttribute('y', cy + 4);
+          t.setAttribute('text-anchor','middle');
+          t.setAttribute('class', 'label');
+          // Keep labels horizontal when the whole grid is rotated for landscape
+          if (!portrait) {
+            t.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
+          }
+          t.textContent = labelText(labKind, midi);
+          gNode.appendChild(t);
+
+          // Hook for future: fingering overlays (single/two-hand)
+          // e.g., draw small circle offset to left/right with "R2"/"L3"
+        }
+      }
+      svg.appendChild(gNode);
+    }
+
+    // ---------- UI wiring ----------
+    document.querySelectorAll('input[name="ori"]').forEach(el => el.addEventListener('change', draw));
+    document.querySelectorAll('input[name="lab"]').forEach(el => el.addEventListener('change', draw));
+    ['key','set','baseMidi','customPC'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+
+    // live: disable customPC unless needed
+    document.getElementById('set').addEventListener('change', (e)=>{
+      document.getElementById('customPC').disabled = (e.target.value !== 'custom');
+    });
+
+    // init
+    document.getElementById('customPC').disabled = true;
+    draw();
+  </script>
+</body>
+</html>
