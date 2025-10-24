@@ -321,7 +321,7 @@ class ExquisFingerings {
     const hand = document.getElementById('fingeringHand').value;
 
     // Get suggestions from ErgoAnalyzer
-    const suggestions = ergoAnalyzer.suggestFingerings(highlightedPads, hand);
+    const suggestions = ergoAnalyzer.suggestFingerings(highlightedPads, hand, this.settings.baseMidi);
 
     // Clear existing fingerings for this hand
     const existingPads = this.currentPattern.getPadsForHand(hand);

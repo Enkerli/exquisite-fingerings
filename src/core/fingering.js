@@ -194,41 +194,126 @@ export class ErgoAnalyzer {
 
   /**
    * Suggest fingerings for a set of pads
-   * Limits to 5 pads per hand (one per finger)
+   * Deduplicates by pitch class and uses anatomically-aware finger assignment
    * @param {Array<{row: number, col: number}>} pads - Pads to assign fingerings
    * @param {string} hand - 'left' or 'right'
+   * @param {number} baseMidi - Base MIDI note (default 48)
    * @returns {Array<{row: number, col: number, finger: number, hand: string, score: number}>} Suggested fingerings
    */
-  suggestFingerings(pads, hand) {
+  suggestFingerings(pads, hand, baseMidi = 48) {
     if (pads.length === 0) return [];
 
-    // Limit to 5 pads per hand
-    let selectedPads = pads;
-    if (pads.length > 5) {
-      // Select first 5 pads (could be smarter here - select most important ones)
-      selectedPads = pads.slice(0, 5);
-    }
+    // Deduplicate by pitch class - keep only the lowest, leftmost pad for each PC
+    const pcMap = new Map();
 
-    // Sort pads by position (bottom-left to top-right)
-    const sortedPads = [...selectedPads].sort((a, b) => {
-      if (a.row !== b.row) return a.row - b.row;
-      return a.col - b.col;
+    pads.forEach(pad => {
+      // Calculate MIDI note for this pad
+      const padIndex = pad.row === 0 ? pad.col : (pad.row % 2 === 1 ? 4 : 3) * pad.row + pad.col;
+      const midiNote = baseMidi + padIndex;
+      const pc = midiNote % 12;
+
+      // Keep the pad with lowest row, then lowest col for each pitch class
+      if (!pcMap.has(pc)) {
+        pcMap.set(pc, { ...pad, pc, midiNote });
+      } else {
+        const existing = pcMap.get(pc);
+        if (pad.row < existing.row || (pad.row === existing.row && pad.col < existing.col)) {
+          pcMap.set(pc, { ...pad, pc, midiNote });
+        }
+      }
     });
 
-    // Assign fingers based on hand
-    // Left hand: thumb (1) on bottom-left, pinky (5) on top-right
-    // Right hand: pinky (5) on bottom-left, thumb (1) on top-right
-    const fingerOrder = hand === 'left'
-      ? [1, 2, 3, 4, 5]  // Thumb to pinky
-      : [5, 4, 3, 2, 1]; // Pinky to thumb
+    const uniquePads = Array.from(pcMap.values());
 
-    return sortedPads.map((pad, index) => ({
-      row: pad.row,
-      col: pad.col,
+    // Limit to 5 pads per hand (one per finger)
+    let selectedPads = uniquePads;
+    if (uniquePads.length > 5) {
+      // Select 5 most accessible pads (lowest rows and leftmost columns)
+      selectedPads = [...uniquePads]
+        .sort((a, b) => {
+          const scoreA = a.row * 2 + a.col; // Prefer lower rows and leftmost cols
+          const scoreB = b.row * 2 + b.col;
+          return scoreA - scoreB;
+        })
+        .slice(0, 5);
+    }
+
+    // Assign fingers based on hand geometry
+    return this._assignFingersAnatomically(selectedPads, hand);
+  }
+
+  /**
+   * Assign fingers based on anatomical hand geometry
+   * Right hand: thumb (1) at lower-left, fingers extend up and right
+   * Left hand: thumb (1) at lower-right, fingers extend up and left
+   * @private
+   */
+  _assignFingersAnatomically(pads, hand) {
+    if (pads.length === 0) return [];
+
+    // Find anchor pad (thumb position) - lowest row, then leftmost (right hand) or rightmost (left hand)
+    const sortedForAnchor = [...pads].sort((a, b) => {
+      if (a.row !== b.row) return a.row - b.row; // Prefer lower rows
+      // For right hand prefer left, for left hand prefer right
+      return hand === 'right' ? a.col - b.col : b.col - a.col;
+    });
+
+    const anchor = sortedForAnchor[0];
+
+    // Create assignments
+    const assignments = [];
+
+    // Assign thumb to anchor
+    assignments.push({
+      row: anchor.row,
+      col: anchor.col,
       hand,
-      finger: fingerOrder[index],
-      score: 0.8 // Placeholder score
-    }));
+      finger: 1,
+      score: 1.0
+    });
+
+    // Remove anchor from remaining pads
+    const remainingPads = pads.filter(p => !(p.row === anchor.row && p.col === anchor.col));
+
+    if (remainingPads.length === 0) return assignments;
+
+    // Sort remaining pads by distance and direction from anchor
+    // For right hand: prefer pads that are up and to the right
+    // For left hand: prefer pads that are up and to the left
+    const sortedRemaining = remainingPads.map(pad => {
+      const rowDiff = pad.row - anchor.row;
+      const colDiff = pad.col - anchor.col;
+      const distance = Math.sqrt(rowDiff * rowDiff + colDiff * colDiff);
+
+      // Calculate a "naturalness" score based on hand geometry
+      // Prefer upward and outward movement (right for right hand, left for left hand)
+      const directionScore = hand === 'right'
+        ? rowDiff + colDiff  // Prefer up and right
+        : rowDiff - colDiff; // Prefer up and left
+
+      return {
+        pad,
+        distance,
+        directionScore,
+        // Combined score: prefer moderate distance with good direction
+        score: directionScore * 2 - distance * 0.5
+      };
+    })
+    .sort((a, b) => b.score - a.score); // Higher score is better
+
+    // Assign fingers 2-5 to remaining pads
+    const fingers = [2, 3, 4, 5];
+    sortedRemaining.slice(0, 4).forEach((item, index) => {
+      assignments.push({
+        row: item.pad.row,
+        col: item.pad.col,
+        hand,
+        finger: fingers[index],
+        score: 0.8
+      });
+    });
+
+    return assignments;
   }
 
   /**
