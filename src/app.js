@@ -54,16 +54,24 @@ class ExquisFingerings {
     });
 
     // Key and Set
-    document.getElementById('key').addEventListener('change', () => this.render());
+    document.getElementById('key').addEventListener('change', () => {
+      this.render();
+      this.updateMIDIHoldIfActive();
+    });
     document.getElementById('set').addEventListener('change', (e) => {
       const isCustom = e.target.value === 'custom';
       document.getElementById('customPC').disabled = !isCustom;
       this.render();
+      this.updateMIDIHoldIfActive();
     });
-    document.getElementById('customPC').addEventListener('input', () => this.render());
+    document.getElementById('customPC').addEventListener('input', () => {
+      this.render();
+      this.updateMIDIHoldIfActive();
+    });
     document.getElementById('baseMidi').addEventListener('input', (e) => {
       this.settings.baseMidi = parseInt(e.target.value);
       this.render();
+      this.updateMIDIHoldIfActive();
       saveSettings(this.settings);
     });
 
@@ -103,6 +111,11 @@ class ExquisFingerings {
     document.getElementById('clearFingerings').addEventListener('click', () => {
       this.currentPattern.clearAll();
       this.render();
+    });
+
+    // Suggest fingerings
+    document.getElementById('suggestFingerings').addEventListener('click', () => {
+      this.suggestFingerings();
     });
 
     // Pattern management
@@ -277,6 +290,60 @@ class ExquisFingerings {
   }
 
   /**
+   * Suggest fingerings for highlighted notes
+   */
+  suggestFingerings() {
+    const pcs = this.getHighlightedPCs();
+    if (pcs.size === 0) {
+      alert('No notes highlighted. Please select a key and scale/chord first.');
+      return;
+    }
+
+    // Get all (row, col) positions for highlighted pads
+    const highlightedPads = [];
+    for (let row = 0; row < 11; row++) {
+      for (let col = 0; col < (row % 2 === 0 ? 6 : 5); col++) {
+        const padIndex = row === 0 ? col : (row % 2 === 1 ? 4 : 3) * row + col;
+        const midiNote = this.settings.baseMidi + padIndex;
+        const pc = midiNote % 12;
+        if (pcs.has(pc)) {
+          highlightedPads.push({ row, col });
+        }
+      }
+    }
+
+    if (highlightedPads.length === 0) {
+      alert('No pads match the selected notes in the current range.');
+      return;
+    }
+
+    // Get selected hand
+    const hand = document.getElementById('fingeringHand').value;
+
+    // Get suggestions from ErgoAnalyzer
+    const suggestions = ergoAnalyzer.suggestFingerings(highlightedPads, hand);
+
+    // Clear existing fingerings for this hand
+    const existingPads = this.currentPattern.getPadsForHand(hand);
+    existingPads.forEach(pad => {
+      this.currentPattern.removeFingering(pad.row, pad.col);
+    });
+
+    // Apply suggestions
+    suggestions.forEach(suggestion => {
+      this.currentPattern.setFingering(
+        suggestion.row,
+        suggestion.col,
+        suggestion.hand,
+        suggestion.finger
+      );
+    });
+
+    this.render();
+    alert(`Suggested fingerings for ${suggestions.length} pads (${hand} hand)`);
+  }
+
+  /**
    * Save current pattern
    */
   saveCurrentPattern() {
@@ -425,6 +492,20 @@ class ExquisFingerings {
 
     // Send as chord with stagger
     midiManager.playChord(notes, 100, null, 20);
+  }
+
+  /**
+   * Update MIDI hold when PCS changes
+   * If hold mode is active, release old notes and play new ones
+   */
+  updateMIDIHoldIfActive() {
+    const holdToggle = document.getElementById('midiHoldToggle');
+    if (holdToggle && holdToggle.checked && midiManager.getStatus().isHolding) {
+      // Release old notes
+      midiManager.releaseAllNotes();
+      // Play new highlighted notes
+      this.sendHighlightedNotes();
+    }
   }
 
   /**
