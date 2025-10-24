@@ -28,6 +28,7 @@ class ExquisFingerings {
     // Initialize
     this.initUI();
     this.loadStoredSettings();
+    this.updatePatternMetadata();
     this.render();
   }
 
@@ -55,12 +56,14 @@ class ExquisFingerings {
 
     // Key and Set
     document.getElementById('key').addEventListener('change', () => {
+      this.updatePatternMetadata();
       this.render();
       this.updateMIDIHoldIfActive();
     });
     document.getElementById('set').addEventListener('change', (e) => {
       const isCustom = e.target.value === 'custom';
       document.getElementById('customPC').disabled = !isCustom;
+      this.updatePatternMetadata();
       this.render();
       this.updateMIDIHoldIfActive();
     });
@@ -418,10 +421,24 @@ class ExquisFingerings {
       return;
     }
 
+    // Update metadata before export
+    this.updatePatternMetadata();
+
     // Update pattern name from input
     const nameInput = document.getElementById('patternName');
     if (nameInput.value.trim()) {
       this.currentPattern.name = nameInput.value.trim();
+    }
+
+    // Generate default filename based on metadata if name is "Untitled"
+    let filename;
+    if (this.currentPattern.name === 'Untitled' || !this.currentPattern.name.trim()) {
+      const key = this.currentPattern.metadata.key || 'C';
+      const setType = this.currentPattern.metadata.setType || 'major';
+      const hand = this.currentHand || 'right';
+      filename = `${key}_${setType}_${hand}`;
+    } else {
+      filename = this.currentPattern.name;
     }
 
     // Create JSON blob
@@ -432,7 +449,7 @@ class ExquisFingerings {
     // Create download link and trigger
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${this.currentPattern.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+    a.download = `${filename.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -563,6 +580,18 @@ class ExquisFingerings {
 
     // Send as chord with stagger
     midiManager.playChord(notes, 100, null, 20);
+  }
+
+  /**
+   * Update pattern metadata with current key and set type
+   */
+  updatePatternMetadata() {
+    const key = document.getElementById('key').value;
+    const setType = document.getElementById('set').value;
+
+    this.currentPattern.metadata.key = key;
+    this.currentPattern.metadata.setType = setType;
+    this.currentPattern.metadata.modifiedAt = Date.now();
   }
 
   /**
