@@ -194,25 +194,30 @@ export class ErgoAnalyzer {
 
   /**
    * Suggest fingerings for a set of pads
+   * Limits to 5 pads per hand (one per finger)
    * @param {Array<{row: number, col: number}>} pads - Pads to assign fingerings
    * @param {string} hand - 'left' or 'right'
-   * @returns {Array<{row: number, col: number, finger: number, score: number}>} Suggested fingerings
+   * @returns {Array<{row: number, col: number, finger: number, hand: string, score: number}>} Suggested fingerings
    */
   suggestFingerings(pads, hand) {
     if (pads.length === 0) return [];
+
+    // Limit to 5 pads per hand
+    let selectedPads = pads;
     if (pads.length > 5) {
-      // Can't finger more than 5 notes with one hand
-      return this._suggestMultiHandFingering(pads);
+      // Select first 5 pads (could be smarter here - select most important ones)
+      selectedPads = pads.slice(0, 5);
     }
 
     // Sort pads by position (bottom-left to top-right)
-    const sortedPads = [...pads].sort((a, b) => {
+    const sortedPads = [...selectedPads].sort((a, b) => {
       if (a.row !== b.row) return a.row - b.row;
       return a.col - b.col;
     });
 
-    // For left hand, stronger fingers on lower/left pads
-    // For right hand, stronger fingers on lower/right pads
+    // Assign fingers based on hand
+    // Left hand: thumb (1) on bottom-left, pinky (5) on top-right
+    // Right hand: pinky (5) on bottom-left, thumb (1) on top-right
     const fingerOrder = hand === 'left'
       ? [1, 2, 3, 4, 5]  // Thumb to pinky
       : [5, 4, 3, 2, 1]; // Pinky to thumb
@@ -221,44 +226,52 @@ export class ErgoAnalyzer {
       row: pad.row,
       col: pad.col,
       hand,
-      finger: fingerOrder[index] || 5,
+      finger: fingerOrder[index],
       score: 0.8 // Placeholder score
     }));
   }
 
   /**
    * Analyze finger span
+   * Only checks adjacent fingers in sequence (1→2, 2→3, 3→4, 4→5)
    * @private
    */
   _analyzeSpan(pads, hand, issues) {
     const handSize = this.handSizes[this.currentHandSize];
     let penalty = 0;
 
-    // Check all pairwise distances
-    for (let i = 0; i < pads.length; i++) {
-      for (let j = i + 1; j < pads.length; j++) {
-        const dist = getGridDistance(
-          pads[i].row, pads[i].col,
-          pads[j].row, pads[j].col
-        );
+    // Sort pads by finger number to check adjacent fingers only
+    const sortedPads = [...pads].sort((a, b) => a.finger - b.finger);
 
-        if (dist > handSize.maxStretch) {
-          penalty += 20;
-          issues.push({
-            type: 'excessive_stretch',
-            hand,
-            fingers: [pads[i].finger, pads[j].finger],
-            distance: dist
-          });
-        } else if (dist > handSize.comfortableStretch) {
-          penalty += 5;
-          issues.push({
-            type: 'uncomfortable_stretch',
-            hand,
-            fingers: [pads[i].finger, pads[j].finger],
-            distance: dist
-          });
-        }
+    // Check only adjacent fingers in sequence
+    for (let i = 0; i < sortedPads.length - 1; i++) {
+      const pad1 = sortedPads[i];
+      const pad2 = sortedPads[i + 1];
+
+      // Skip if same finger number (shouldn't happen but be safe)
+      if (pad1.finger === pad2.finger) continue;
+
+      const dist = getGridDistance(
+        pad1.row, pad1.col,
+        pad2.row, pad2.col
+      );
+
+      if (dist > handSize.maxStretch) {
+        penalty += 20;
+        issues.push({
+          type: 'excessive_stretch',
+          hand,
+          fingers: [pad1.finger, pad2.finger],
+          distance: dist
+        });
+      } else if (dist > handSize.comfortableStretch) {
+        penalty += 5;
+        issues.push({
+          type: 'uncomfortable_stretch',
+          hand,
+          fingers: [pad1.finger, pad2.finger],
+          distance: dist
+        });
       }
     }
 
@@ -288,27 +301,34 @@ export class ErgoAnalyzer {
 
   /**
    * Analyze finger crossings
+   * Checks if fingers are in logical order relative to pad positions
    * @private
    */
   _analyzeFingerCrossings(pads, hand, issues) {
     let penalty = 0;
+    const seenCrossings = new Set();
 
-    // Check if finger numbers are out of order relative to pad positions
-    // This is a simplified check - would need more sophisticated logic
-    for (let i = 0; i < pads.length - 1; i++) {
-      for (let j = i + 1; j < pads.length; j++) {
-        const pad1 = pads[i];
-        const pad2 = pads[j];
+    // Sort by finger number to check sequence
+    const sortedByFinger = [...pads].sort((a, b) => a.finger - b.finger);
 
-        // If lower pad has higher finger number, it's likely a crossing
-        if (pad1.row < pad2.row && pad1.finger > pad2.finger) {
-          penalty += 10;
-          issues.push({
-            type: 'finger_crossing',
-            hand,
-            fingers: [pad1.finger, pad2.finger]
-          });
-        }
+    // Check only adjacent fingers to avoid duplicates
+    for (let i = 0; i < sortedByFinger.length - 1; i++) {
+      const pad1 = sortedByFinger[i];
+      const pad2 = sortedByFinger[i + 1];
+
+      // For simplicity, check if lower finger number is on higher row
+      // (This is a basic heuristic - real crossings are more complex)
+      const crossingKey = `${pad1.finger}-${pad2.finger}`;
+      if (seenCrossings.has(crossingKey)) continue;
+
+      if (pad1.row > pad2.row) {
+        penalty += 5;  // Reduced penalty
+        seenCrossings.add(crossingKey);
+        issues.push({
+          type: 'finger_crossing',
+          hand,
+          fingers: [pad1.finger, pad2.finger]
+        });
       }
     }
 
