@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Exquisite Fingerings - Exquis Controller Explorer</title>
+  <meta name="description" content="Interactive fingering explorer for Intuitive Instruments Exquis hex grid controller" />
+  <script type="module" crossorigin src="/assets/main-IXQbyrMo.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/main-Be3fBQPC.css">
+</head>
+<body>
+  <aside>
+    <h2>Exquis Fingerings</h2>
+
+    <h3>Orientation</h3>
+    <label><input type="radio" name="ori" value="portrait" checked> Portrait (peaks up)</label>
+    <label><input type="radio" name="ori" value="landscape"> Landscape (flats up)</label>
+
+    <div class="sep"></div>
+
+    <h3>Key / Set</h3>
+    <label>Key
+      <select id="key">
+        <option>C</option><option>C#</option><option>D</option><option>Eb</option>
+        <option>E</option><option>F</option><option>F#</option><option>G</option>
+        <option>Ab</option><option>A</option><option>Bb</option><option>B</option>
+      </select>
+    </label>
+    <label>Type
+      <select id="set">
+        <option value="maj">Major scale</option>
+        <option value="natmin">Natural minor</option>
+        <option value="harmin">Harmonic minor</option>
+        <option value="melmin">Melodic minor</option>
+        <option value="dorian">Dorian</option>
+        <option value="phrygian">Phrygian</option>
+        <option value="lydian">Lydian</option>
+        <option value="mixolydian">Mixolydian</option>
+        <option value="majpent">Major pentatonic</option>
+        <option value="minpent">Minor pentatonic</option>
+        <option value="majtriad">Major triad</option>
+        <option value="mintriad">Minor triad</option>
+        <option value="maj7">Major 7th</option>
+        <option value="min7">Minor 7th</option>
+        <option value="dom7">Dominant 7th</option>
+        <option value="dim7">Diminished 7th</option>
+        <option value="hdim7">Half-diminished 7th</option>
+        <option value="maj9">Major 9th</option>
+        <option value="min9">Minor 9th</option>
+        <option value="dom9">Dominant 9th</option>
+        <option value="chromatic">Chromatic</option>
+        <option value="custom">Custom (PCs)</option>
+      </select>
+    </label>
+    <label>Custom pitch classes (0–11, comma-separated)
+      <input id="customPC" type="text" placeholder="e.g. 0,2,4,5,7,9,11" disabled />
+    </label>
+    <label>Base MIDI (row0 pad0)
+      <input id="baseMidi" type="number" value="48" min="0" max="120" />
+    </label>
+
+    <div class="sep"></div>
+
+    <h3>Labels</h3>
+    <label><input type="radio" name="lab" value="pc" checked> Pitch class (0–11)</label>
+    <label><input type="radio" name="lab" value="note"> Note names</label>
+    <label><input type="radio" name="lab" value="midi"> MIDI number</label>
+
+    <div class="sep"></div>
+
+    <h3>Fingering</h3>
+    <div id="fingeringModeInfo" class="info-box" style="display:none;">
+      Click pads to assign fingerings. Use keys 1-5 or click buttons below.
+    </div>
+    <label>
+      <input type="checkbox" id="fingeringMode"> Enable Fingering Mode
+    </label>
+    <label>Hand
+      <select id="fingeringHand">
+        <option value="right">Right (red)</option>
+        <option value="left">Left (blue)</option>
+      </select>
+    </label>
+    <div class="button-group">
+      <button id="fingBtn1" class="finger-btn" disabled>1</button>
+      <button id="fingBtn2" class="finger-btn" disabled>2</button>
+      <button id="fingBtn3" class="finger-btn" disabled>3</button>
+      <button id="fingBtn4" class="finger-btn" disabled>4</button>
+      <button id="fingBtn5" class="finger-btn" disabled>5</button>
+    </div>
+    <button id="clearFingerings" class="secondary" style="width:100%;">Clear All Fingerings</button>
+
+    <div class="sep"></div>
+
+    <h3>Fingering Patterns</h3>
+    <label>Pattern Name
+      <input type="text" id="patternName" placeholder="e.g., C Major Scale" />
+    </label>
+    <button id="savePattern" style="width:100%;">Save Pattern</button>
+    <label>Load Pattern
+      <select id="loadPattern">
+        <option value="">-- Select Pattern --</option>
+      </select>
+    </label>
+    <button id="deletePattern" class="danger" style="width:100%;">Delete Selected</button>
+
+    <div class="sep"></div>
+
+    <h3>Ergonomics</h3>
+    <label>Hand Size
+      <select id="handSize">
+        <option value="small">Small</option>
+        <option value="medium" selected>Medium</option>
+        <option value="large">Large</option>
+      </select>
+    </label>
+    <button id="analyzeErgo" style="width:100%;">Analyze Fingering</button>
+    <div id="ergoResult"></div>
+
+    <div class="sep"></div>
+
+    <h3>MIDI Output</h3>
+    <div id="midiStatus" class="warning-box">
+      MIDI not available (use Chrome/Brave/Edge)
+    </div>
+    <button id="enableMidi" style="width:100%;">Enable MIDI Output</button>
+    <label>MIDI Device
+      <select id="midiDevice" disabled>
+        <option value="">-- No devices --</option>
+      </select>
+    </label>
+
+    <div class="control-row">
+      <label style="flex:2;">
+        Hold Duration
+        <input type="range" id="midiHoldDuration" min="100" max="10000" step="100" value="1000" />
+      </label>
+      <span class="range-value" id="holdDurationValue">1.0s</span>
+    </div>
+
+    <div class="control-row">
+      <label style="flex:2;">
+        Octave Range
+        <input type="range" id="midiOctaveRange" min="0" max="2" step="1" value="0" />
+      </label>
+      <span class="range-value" id="octaveRangeValue">0</span>
+    </div>
+
+    <label><input type="checkbox" id="midiHoldToggle"> Hold Notes (toggle)</label>
+    <button id="midiSendHighlighted" style="width:100%;">Send Highlighted Notes</button>
+
+    <div class="sep"></div>
+
+    <p class="legend">
+      Exquis: 11 rows, alternating 6/5 pads.<br>
+      NW diagonal = minor 3rd up<br>
+      NE diagonal = major 3rd up<br>
+      Row start indexes: 0,4,7,11,14,18,21,25,28,32,35
+    </p>
+  </aside>
+
+  <main>
+    <svg id="grid" aria-label="Exquis hex grid"></svg>
+  </main>
+
+</body>
+</html>
