@@ -23,15 +23,24 @@ export function getRowLength(row) {
 
 /**
  * Row start pad indexes
- * Calculated based on row lengths (6 pads for even rows, 5 for odd rows)
+ * Pattern: 0, 4, 7, 11, 14, 18, 21, 25, 28, 32, 35
+ * Increments alternate: +4, +3, +4, +3, ... (major third, minor third)
+ *
+ * This reflects the musical layout where rows are separated by thirds:
+ * - From row N (even) to row N+1 (odd): +4 semitones (major third)
+ * - From row N (odd) to row N+1 (even): +3 semitones (minor third)
+ *
+ * Note: Pads repeat across rows because the grid is based on musical intervals,
+ * not sequential pad numbering. Row lengths (6/5) describe physical layout only.
  */
 export const ROW_START = (() => {
   const starts = [0];
   for (let r = 1; r < ROW_COUNT; r++) {
-    const prevRowLength = getRowLength(r - 1);
-    starts.push(starts[r - 1] + prevRowLength);
+    const prev = starts[r - 1];
+    // Odd row indices: +4 (major third), Even row indices: +3 (minor third)
+    starts.push(prev + (r % 2 === 1 ? 4 : 3));
   }
-  return starts;
+  return starts; // [0, 4, 7, 11, 14, 18, 21, 25, 28, 32, 35]
 })();
 
 /**
@@ -48,13 +57,16 @@ export function getPadIndex(row, col) {
  * Get row and column from global pad index
  * @param {number} padIndex - Global pad index
  * @returns {{row: number, col: number}} Row and column
+ *
+ * Note: With the musical interval layout, pad indices can overlap between rows.
+ * We search from bottom to top to find the first valid row.
  */
 export function getRowCol(padIndex) {
-  // Find which row this pad is in
-  for (let row = ROW_COUNT - 1; row >= 0; row--) {
+  // Search from bottom row (0) upward to handle overlapping indices
+  for (let row = 0; row < ROW_COUNT; row++) {
     if (padIndex >= ROW_START[row]) {
       const col = padIndex - ROW_START[row];
-      if (col < getRowLength(row)) {
+      if (col >= 0 && col < getRowLength(row)) {
         return { row, col };
       }
     }
