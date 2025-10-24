@@ -149,12 +149,33 @@ export class ErgoAnalyzer {
 
   /**
    * Set hand size profile
-   * @param {string} size - 'small', 'medium', or 'large'
+   * @param {string} size - 'small', 'medium', 'large', or 'custom'
    */
   setHandSize(size) {
-    if (this.handSizes[size]) {
+    if (size === 'custom') {
+      this.currentHandSize = 'custom';
+    } else if (this.handSizes[size]) {
       this.currentHandSize = size;
     }
+  }
+
+  /**
+   * Set custom handprint measurements
+   * @param {object} measurements - Object with finger-pair distance measurements (e.g., {'1-2': 1.5, '2-3': 1.2, ...})
+   */
+  setCustomHandprint(measurements) {
+    // Calculate comfortable and max stretch from measurements
+    const distances = Object.values(measurements);
+    const maxDistance = Math.max(...distances);
+    const avgDistance = distances.reduce((a, b) => a + b, 0) / distances.length;
+
+    this.handSizes.custom = {
+      maxStretch: maxDistance * 1.1, // 10% beyond measured max
+      comfortableStretch: avgDistance,
+      measurements // Store full measurements for future use
+    };
+
+    this.currentHandSize = 'custom';
   }
 
   /**

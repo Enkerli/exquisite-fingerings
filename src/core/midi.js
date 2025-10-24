@@ -228,10 +228,69 @@ export class MIDIManager {
   }
 
   /**
+   * Set note handler for MIDI input
+   * Used for capturing handprints and other input scenarios
+   * @param {Function|null} handler - Function(midiNote, velocity) or null to clear
+   */
+  setNoteHandler(handler) {
+    this.noteHandler = handler;
+
+    // Listen to all input devices
+    if (this.midiAccess) {
+      const inputs = this.midiAccess.inputs.values();
+      for (const input of inputs) {
+        if (handler) {
+          input.onmidimessage = (message) => this._handleMidiInput(message);
+        } else {
+          input.onmidimessage = null;
+        }
+      }
+    }
+  }
+
+  /**
+   * Handle incoming MIDI messages
+   * @private
+   */
+  _handleMidiInput(message) {
+    const [status, note, velocity] = message.data;
+    const messageType = status & 0xF0;
+
+    // Note On (0x90) or Note Off (0x80)
+    if (messageType === 0x90 || messageType === 0x80) {
+      const actualVelocity = messageType === 0x80 ? 0 : velocity;
+      if (this.noteHandler) {
+        this.noteHandler(note, actualVelocity);
+      }
+    }
+  }
+
+  /**
    * Get current status
    * @returns {object} Status object
    */
   getStatus() {
+    const status = {
+      isSupported: this.isSupported,
+      isInitialized: this.midiAccess !== null,
+      hasDevice: this.selectedOutput !== null,
+      deviceName: this.selectedOutput?.name || null,
+      isHolding: this.isHolding,
+      activeNoteCount: this.activeNotes.size,
+      holdDuration: this.holdDuration,
+      octaveRange: this.octaveRange
+    };
+
+    // Add "isEnabled" flag for convenience
+    status.isEnabled = status.isInitialized;
+    return status;
+  }
+
+  /**
+   * Old getStatus for compatibility
+   * @returns {object} Status object
+   */
+  _oldGetStatus() {
     return {
       isSupported: this.isSupported,
       isInitialized: this.midiAccess !== null,

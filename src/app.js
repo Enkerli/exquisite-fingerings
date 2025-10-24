@@ -21,6 +21,11 @@ class ExquisFingerings {
     this.currentHand = 'right';
     this.fingeringMode = false;
 
+    // Handprint capture state
+    this.handprintMode = false;
+    this.handprintClicks = [];
+    this.handprintData = null;
+
     // UI Elements
     this.gridElement = document.getElementById('grid');
     this.gridRenderer = new GridRenderer(this.gridElement);
@@ -191,14 +196,38 @@ class ExquisFingerings {
 
     // Hand size
     document.getElementById('handSize')?.addEventListener('change', (e) => {
-      ergoAnalyzer.setHandSize(e.target.value);
-      this.settings.handSize = e.target.value;
+      const value = e.target.value;
+      ergoAnalyzer.setHandSize(value);
+      this.settings.handSize = value;
+      saveSettings(this.settings);
+
+      // Show/hide handprint section
+      const handprintSection = document.getElementById('handprintSection');
+      if (handprintSection) {
+        handprintSection.style.display = value === 'custom' ? 'block' : 'none';
+      }
+    });
+
+    // Handprint capture
+    document.getElementById('captureHandprint')?.addEventListener('click', () => {
+      this.startHandprintCapture();
+    });
+
+    document.getElementById('clearHandprint')?.addEventListener('click', () => {
+      this.clearHandprint();
+    });
+
+    // Fingering type
+    document.getElementById('fingeringType')?.addEventListener('change', (e) => {
+      this.settings.fingeringType = e.target.value;
       saveSettings(this.settings);
     });
 
     // Grid click handler
     this.gridRenderer.setPadClickHandler((row, col, midiNote, pc) => {
-      if (this.fingeringMode) {
+      if (this.handprintMode) {
+        this.handleHandprintClick(row, col);
+      } else if (this.fingeringMode) {
         this.handleFingeringClick(row, col);
       } else {
         // Play MIDI note
@@ -436,7 +465,9 @@ class ExquisFingerings {
       const key = this.currentPattern.metadata.key || 'C';
       const setType = this.currentPattern.metadata.setType || 'major';
       const hand = this.currentHand || 'right';
-      filename = `${key}_${setType}_${hand}`;
+      // Add timestamp to distinguish multiple attempts at same scale
+      const timestamp = new Date().toISOString().slice(11, 19).replace(/:/g, '');
+      filename = `${key}_${setType}_${hand}_${timestamp}`;
     } else {
       filename = this.currentPattern.name;
     }
@@ -647,6 +678,188 @@ class ExquisFingerings {
       default:
         return JSON.stringify(issue);
     }
+  }
+
+  /**
+   * Start handprint capture mode
+   * User plays 5 pads on physical Exquis device in sequence: thumb, index, middle, ring, pinkie
+   */
+  startHandprintCapture() {
+    if (!midiManager.getStatus().isEnabled) {
+      alert('Please enable MIDI first to capture handprint from your Exquis device.');
+      return;
+    }
+
+    this.handprintMode = true;
+    this.handprintClicks = [];
+
+    const statusEl = document.getElementById('handprintStatus');
+    if (statusEl) {
+      statusEl.innerHTML = `
+        <div style="background:#334; padding:8px; border-radius:4px; margin-top:8px;">
+          <strong>Handprint Capture Active</strong><br/>
+          Place your ${this.currentHand} hand in a comfortable position on your Exquis device.<br/>
+          <em>Press pads in sequence:</em><br/>
+          1️⃣ Thumb → 2️⃣ Index → 3️⃣ Middle → 4️⃣ Ring → 5️⃣ Pinkie
+          <div style="margin-top:4px; font-size:1.1em;">
+            Captured: ${this.handprintClicks.length}/5
+          </div>
+        </div>
+      `;
+    }
+
+    // Listen for MIDI input
+    midiManager.setNoteHandler((midiNote, velocity) => {
+      if (this.handprintMode && velocity > 0) {
+        this.handleHandprintMidiNote(midiNote);
+      }
+    });
+
+    document.getElementById('captureHandprint').textContent = 'Cancel Capture';
+    document.getElementById('captureHandprint').onclick = () => {
+      this.cancelHandprintCapture();
+    };
+  }
+
+  /**
+   * Handle MIDI note during handprint capture
+   */
+  handleHandprintMidiNote(midiNote) {
+    if (this.handprintClicks.length >= 5) return;
+
+    // Convert MIDI note to (row, col)
+    const padIndex = midiNote - this.settings.baseMidi;
+    const row = Math.floor(padIndex / 6); // Approximate
+    const col = padIndex % 6;
+
+    this.handprintClicks.push({ row, col, midiNote, finger: this.handprintClicks.length + 1 });
+
+    const statusEl = document.getElementById('handprintStatus');
+    if (statusEl) {
+      statusEl.querySelector('div:last-child').textContent = `Captured: ${this.handprintClicks.length}/5`;
+    }
+
+    if (this.handprintClicks.length === 5) {
+      this.finishHandprintCapture();
+    }
+  }
+
+  /**
+   * Handle pad click during handprint capture (fallback if no MIDI)
+   */
+  handleHandprintClick(row, col) {
+    if (this.handprintClicks.length >= 5) return;
+
+    this.handprintClicks.push({ row, col, finger: this.handprintClicks.length + 1 });
+
+    const statusEl = document.getElementById('handprintStatus');
+    if (statusEl) {
+      statusEl.querySelector('div:last-child').textContent = `Captured: ${this.handprintClicks.length}/5 (click mode)`;
+    }
+
+    // Render to show which pads were clicked
+    this.render();
+
+    if (this.handprintClicks.length === 5) {
+      this.finishHandprintCapture();
+    }
+  }
+
+  /**
+   * Complete handprint capture and calculate measurements
+   */
+  finishHandprintCapture() {
+    this.handprintMode = false;
+    midiManager.setNoteHandler(null); // Clear MIDI handler
+
+    // Calculate all finger-pair distances
+    const measurements = {};
+    for (let i = 0; i < 5; i++) {
+      for (let j = i + 1; j < 5; j++) {
+        const pad1 = this.handprintClicks[i];
+        const pad2 = this.handprintClicks[j];
+        const distance = Math.sqrt(
+          Math.pow(pad2.row - pad1.row, 2) + Math.pow(pad2.col - pad1.col, 2)
+        );
+        const key = `${i + 1}-${j + 1}`;
+        measurements[key] = distance;
+      }
+    }
+
+    this.handprintData = {
+      hand: this.currentHand,
+      positions: this.handprintClicks,
+      measurements,
+      capturedAt: Date.now()
+    };
+
+    // Save to settings
+    this.settings.handprints = this.settings.handprints || [];
+    this.settings.handprints.push(this.handprintData);
+    saveSettings(this.settings);
+
+    // Update ergo analyzer
+    ergoAnalyzer.setCustomHandprint(measurements);
+
+    const statusEl = document.getElementById('handprintStatus');
+    if (statusEl) {
+      statusEl.innerHTML = `
+        <div style="background:#243; padding:8px; border-radius:4px; margin-top:8px; color:#6f6;">
+          ✓ Handprint captured!<br/>
+          ${this.currentHand} hand, ${Object.keys(measurements).length} measurements recorded
+        </div>
+      `;
+    }
+
+    document.getElementById('captureHandprint').textContent = 'Start Handprint Capture';
+    document.getElementById('captureHandprint').onclick = () => {
+      this.startHandprintCapture();
+    };
+    document.getElementById('clearHandprint').style.display = 'block';
+
+    this.render();
+    alert(`Handprint captured! ${this.currentHand} hand with ${this.handprintClicks.length} finger positions.`);
+  }
+
+  /**
+   * Cancel handprint capture
+   */
+  cancelHandprintCapture() {
+    this.handprintMode = false;
+    this.handprintClicks = [];
+    midiManager.setNoteHandler(null);
+
+    const statusEl = document.getElementById('handprintStatus');
+    if (statusEl) {
+      statusEl.innerHTML = '';
+    }
+
+    document.getElementById('captureHandprint').textContent = 'Start Handprint Capture';
+    document.getElementById('captureHandprint').onclick = () => {
+      this.startHandprintCapture();
+    };
+
+    this.render();
+  }
+
+  /**
+   * Clear handprint and revert to preset
+   */
+  clearHandprint() {
+    if (!confirm('Clear custom handprint and revert to preset hand size?')) return;
+
+    this.handprintData = null;
+    this.handprintClicks = [];
+    document.getElementById('handSize').value = 'medium';
+    ergoAnalyzer.setHandSize('medium');
+    this.settings.handSize = 'medium';
+    saveSettings(this.settings);
+
+    document.getElementById('handprintStatus').innerHTML = '';
+    document.getElementById('clearHandprint').style.display = 'none';
+
+    this.render();
+    alert('Handprint cleared. Using medium preset.');
   }
 }
 

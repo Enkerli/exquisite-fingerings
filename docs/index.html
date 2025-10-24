@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Exquisite Fingerings - Exquis Controller Explorer</title>
   <meta name="description" content="Interactive fingering explorer for Intuitive Instruments Exquis hex grid controller" />
-  <script type="module" crossorigin src="/assets/main-2F6V1BTx.js"></script>
+  <script type="module" crossorigin src="/assets/main-HphgBpKf.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/main-Dn9BI8_N.css">
 </head>
 <body>
@@ -116,13 +116,39 @@
     <div class="sep"></div>
 
     <h3>Ergonomics</h3>
-    <label>Hand Size
-      <select id="handSize">
-        <option value="small">Small</option>
-        <option value="medium" selected>Medium</option>
-        <option value="large">Large</option>
+
+    <details>
+      <summary style="cursor:pointer; padding:8px; background:#333; margin-bottom:8px;">
+        <strong>Hand Profile</strong>
+      </summary>
+      <div style="padding:8px 0;">
+        <label>Quick Preset
+          <select id="handSize">
+            <option value="small">Small</option>
+            <option value="medium" selected>Medium</option>
+            <option value="large">Large</option>
+            <option value="custom">Custom (Handprint)</option>
+          </select>
+        </label>
+
+        <div id="handprintSection" style="display:none; margin-top:8px;">
+          <p style="font-size:0.85em; opacity:0.8; margin:4px 0;">
+            Capture your actual hand measurements on the Exquis grid.
+          </p>
+          <button id="captureHandprint" style="width:100%;">Start Handprint Capture</button>
+          <div id="handprintStatus" style="font-size:0.85em; margin-top:4px;"></div>
+          <button id="clearHandprint" style="width:100%; margin-top:4px; display:none;">Clear Handprint</button>
+        </div>
+      </div>
+    </details>
+
+    <label>Fingering Type
+      <select id="fingeringType">
+        <option value="chord">Chord (static hand position)</option>
+        <option value="scale">Scale (sequential/moving)</option>
       </select>
     </label>
+
     <button id="analyzeErgo" style="width:100%;">Analyze Fingering</button>
     <div id="ergoResult"></div>
 
