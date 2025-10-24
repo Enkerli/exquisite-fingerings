@@ -127,6 +127,13 @@ class ExquisFingerings {
     });
     document.getElementById('deletePattern').addEventListener('click', () => this.deleteCurrentPattern());
 
+    // Export/Import
+    document.getElementById('exportPattern').addEventListener('click', () => this.exportPattern());
+    document.getElementById('importPatternBtn').addEventListener('click', () => {
+      document.getElementById('importPattern').click();
+    });
+    document.getElementById('importPattern').addEventListener('change', (e) => this.importPattern(e));
+
     // MIDI
     document.getElementById('enableMidi').addEventListener('click', () => this.initMIDI());
     document.getElementById('midiDevice').addEventListener('change', (e) => {
@@ -400,6 +407,70 @@ class ExquisFingerings {
     deletePattern(name);
     this.updatePatternList();
     document.getElementById('loadPattern').value = '';
+  }
+
+  /**
+   * Export current pattern to JSON file
+   */
+  exportPattern() {
+    if (this.currentPattern.fingerings.size === 0) {
+      alert('No fingerings to export. Create a fingering pattern first.');
+      return;
+    }
+
+    // Update pattern name from input
+    const nameInput = document.getElementById('patternName');
+    if (nameInput.value.trim()) {
+      this.currentPattern.name = nameInput.value.trim();
+    }
+
+    // Create JSON blob
+    const json = JSON.stringify(this.currentPattern.toJSON(), null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    // Create download link and trigger
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${this.currentPattern.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    alert(`Exported "${this.currentPattern.name}" to JSON file`);
+  }
+
+  /**
+   * Import pattern from JSON file
+   */
+  importPattern(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target.result);
+        const pattern = FingeringPattern.fromJSON(json);
+
+        // Load the imported pattern
+        this.currentPattern = pattern;
+        document.getElementById('patternName').value = pattern.name;
+
+        // Render and update UI
+        this.render();
+        alert(`Imported "${pattern.name}" with ${pattern.fingerings.size} fingerings`);
+
+        // Reset file input
+        event.target.value = '';
+      } catch (err) {
+        alert(`Error importing file: ${err.message}`);
+        console.error('Import error:', err);
+      }
+    };
+
+    reader.readAsText(file);
   }
 
   /**

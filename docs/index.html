@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Exquisite Fingerings - Exquis Controller Explorer</title>
   <meta name="description" content="Interactive fingering explorer for Intuitive Instruments Exquis hex grid controller" />
-  <script type="module" crossorigin src="/assets/main-B3KFiCs8.js"></script>
+  <script type="module" crossorigin src="/assets/main-CfIf1bFf.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/main-Dn9BI8_N.css">
 </head>
 <body>
@@ -104,6 +104,14 @@
       </select>
     </label>
     <button id="deletePattern" class="danger" style="width:100%;">Delete Selected</button>
+
+    <div class="sep"></div>
+
+    <button id="exportPattern" style="width:100%;">Export to JSON</button>
+    <label style="width:100%; display:block;">
+      <input type="file" id="importPattern" accept=".json" style="display:none;" />
+      <button id="importPatternBtn" style="width:100%;" type="button">Import from JSON</button>
+    </label>
 
     <div class="sep"></div>
 
