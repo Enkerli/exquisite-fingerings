@@ -24,8 +24,11 @@ class ExquisFingerings {
 
     // Handprint capture state
     this.handprintMode = false;
-    this.handprintCaptures = [];  // Current capture in progress
+    this.handprintCaptureState = null;  // 'waiting_basenote' | 'capturing_fingers' | 'rating'
+    this.handprintCaptures = [];  // Current capture in progress (5 fingers)
     this.handprintCaptureHand = 'right';  // Selected hand for capture
+    this.handprintSessionBaseMidi = null;  // Basenote for current session
+    this.handprintSessionCaptures = [];  // All handprints in current session
     this.savedHandprints = this.settings.handprints || [];  // All saved handprints
 
     // UI Elements
@@ -295,7 +298,13 @@ class ExquisFingerings {
     this.gridRenderer.setOrientation(this.settings.orientation);
     this.gridRenderer.setLabelMode(this.settings.labelMode);
     this.gridRenderer.setBaseMidi(this.settings.baseMidi);
-    this.gridRenderer.setHighlightedPCs(this.getHighlightedPCs());
+
+    // During handprint capture, show no pitch class highlights (plain chromatic grid)
+    if (this.handprintMode) {
+      this.gridRenderer.setHighlightedPCs(new Set());
+    } else {
+      this.gridRenderer.setHighlightedPCs(this.getHighlightedPCs());
+    }
 
     // During handprint capture, show the captured fingers on grid
     if (this.handprintMode && this.handprintCaptures.length > 0) {
@@ -723,13 +732,13 @@ class ExquisFingerings {
   }
 
   /**
-   * Start handprint capture
+   * Start handprint capture session
    * Auto-enables MIDI if not already enabled
    */
   async startHandprintCapture() {
-    // If already in handprint mode, cancel instead
+    // If already in handprint mode, stop the session instead
     if (this.handprintMode) {
-      this.cancelHandprintCapture();
+      this.stopHandprintSession();
       return;
     }
 
@@ -756,8 +765,12 @@ class ExquisFingerings {
       }
     }
 
+    // Start capture session
     this.handprintMode = true;
+    this.handprintCaptureState = 'waiting_basenote';
     this.handprintCaptures = [];
+    this.handprintSessionCaptures = [];
+    this.handprintSessionBaseMidi = null;
     this.lastHandprintNoteTime = 0;  // For debouncing
 
     // Store original label mode and switch to chromatic (index) display
@@ -769,11 +782,11 @@ class ExquisFingerings {
     if (statusEl) {
       statusEl.innerHTML = `
         <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
-          <strong>Capture Active - ${this.handprintCaptureHand.toUpperCase()} hand</strong><br/>
+          <strong>Capture Session Started - ${this.handprintCaptureHand.toUpperCase()} hand</strong><br/>
           <strong style="color:#fa0;">⚠️ Exquis must be in CHROMATIC layout!</strong><br/>
-          Press comfortable position: <strong>👍 1 → 2 → 3 → 4 → 5 🤙</strong>
+          <strong style="color:#6f6;">STEP 1: Press any pad to set basenote (reference point)</strong>
           <div style="margin-top:8px; font-size:1.2em; color:#6af;">
-            <strong id="handprintCounter">Captured: 0/5</strong>
+            <strong id="handprintCounter">Waiting for basenote...</strong>
           </div>
         </div>
       `;
@@ -791,18 +804,32 @@ class ExquisFingerings {
       }
     });
 
-    // Change button to Cancel
+    // Change button to Stop Session
     const startBtn = document.getElementById('startHandprintCapture');
-    startBtn.textContent = 'Cancel Capture';
+    startBtn.textContent = 'Stop Capture Session';
     startBtn.style.background = '#c44';
   }
 
   /**
-   * Cancel handprint capture in progress
+   * Stop handprint capture session and optionally save
    */
-  cancelHandprintCapture() {
+  stopHandprintSession() {
+    const hasCaptures = this.handprintSessionCaptures.length > 0;
+
+    if (hasCaptures) {
+      const save = confirm(`Stop capture session?\n\nYou have ${this.handprintSessionCaptures.length} handprint(s) in this session.\n\nClick OK to save session, Cancel to discard.`);
+
+      if (save) {
+        this.saveHandprintSession();
+      }
+    }
+
+    // Reset capture state
     this.handprintMode = false;
+    this.handprintCaptureState = null;
     this.handprintCaptures = [];
+    this.handprintSessionCaptures = [];
+    this.handprintSessionBaseMidi = null;
     midiManager.setNoteHandler(null);
 
     // Restore original label mode
@@ -815,7 +842,7 @@ class ExquisFingerings {
     if (statusEl) {
       statusEl.innerHTML = `
         <div style="padding:8px; opacity:0.7;">
-          Capture cancelled.
+          ${hasCaptures ? 'Session saved.' : 'Session cancelled.'}
         </div>
       `;
 
@@ -837,37 +864,64 @@ class ExquisFingerings {
    * Handle MIDI note during handprint capture
    */
   handleHandprintMidiNote(midiNote) {
-    if (this.handprintCaptures.length >= 5) return;
+    if (this.handprintCaptureState === 'waiting_basenote') {
+      // Set basenote and start capturing fingers
+      this.handprintSessionBaseMidi = midiNote;
+      this.settings.baseMidi = midiNote;
+      this.handprintCaptureState = 'capturing_fingers';
+      this.handprintCaptures = [];
 
-    // Convert MIDI note to pad index
-    const padIndex = midiNote - this.settings.baseMidi;
-
-    // Convert pad index to (row, col) using proper grid logic
-    try {
-      const { row, col } = getRowCol(padIndex);
-
-      this.handprintCaptures.push({
-        row,
-        col,
-        padIndex,
-        finger: this.handprintCaptures.length + 1,
-        timestamp: Date.now()
-      });
-
-      // Update counter
-      const counterEl = document.getElementById('handprintCounter');
-      if (counterEl) {
-        counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5`;
+      const statusEl = document.getElementById('handprintCaptureStatus');
+      if (statusEl) {
+        statusEl.innerHTML = `
+          <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
+            <strong>Basenote Set: MIDI ${midiNote}</strong><br/>
+            <strong style="color:#6f6;">STEP 2: Press 5 fingers in order 👍 1 → 2 → 3 → 4 → 5 🤙</strong>
+            <div style="margin-top:8px; font-size:1.2em; color:#6af;">
+              <strong id="handprintCounter">Captured: 0/5</strong>
+            </div>
+          </div>
+        `;
       }
 
-      // Visual feedback on grid (show numbered fingers)
       this.render();
+      return;
+    }
 
-      if (this.handprintCaptures.length === 5) {
-        this.finishHandprintCapture();
+    if (this.handprintCaptureState === 'capturing_fingers') {
+      if (this.handprintCaptures.length >= 5) return;
+
+      // Convert MIDI note to pad index using session basenote
+      const padIndex = midiNote - this.handprintSessionBaseMidi;
+
+      // Convert pad index to (row, col) using proper grid logic
+      try {
+        const { row, col } = getRowCol(padIndex);
+
+        this.handprintCaptures.push({
+          row,
+          col,
+          padIndex,
+          midiNote,
+          finger: this.handprintCaptures.length + 1,
+          timestamp: Date.now()
+        });
+
+        // Update counter
+        const counterEl = document.getElementById('handprintCounter');
+        if (counterEl) {
+          counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5`;
+        }
+
+        // Visual feedback on grid (show numbered fingers)
+        this.render();
+
+        if (this.handprintCaptures.length === 5) {
+          this.finishHandprintCapture();
+        }
+      } catch (err) {
+        console.error('Invalid pad index from MIDI note:', midiNote, padIndex, err);
       }
-    } catch (err) {
-      console.error('Invalid pad index from MIDI note:', midiNote, padIndex, err);
     }
   }
 
@@ -905,14 +959,7 @@ class ExquisFingerings {
    * Complete handprint capture and ask for comfort rating
    */
   finishHandprintCapture() {
-    this.handprintMode = false;
-    midiManager.setNoteHandler(null);
-
-    // Restore original label mode
-    if (this.preCaptureLabelMode) {
-      this.settings.labelMode = this.preCaptureLabelMode;
-      this.preCaptureLabelMode = null;
-    }
+    this.handprintCaptureState = 'rating';
 
     // Show comfort rating UI
     const statusEl = document.getElementById('handprintCaptureStatus');
@@ -994,7 +1041,7 @@ class ExquisFingerings {
       id: handprintID,
       hand: this.handprintCaptureHand,
       orientation: this.settings.orientation,
-      baseMidi: this.settings.baseMidi,
+      baseMidi: this.handprintSessionBaseMidi,
       midiDevice: deviceName,
       comfortRating,
       positions: this.handprintCaptures,
@@ -1002,36 +1049,34 @@ class ExquisFingerings {
       capturedAt: Date.now()
     };
 
-    // Save to settings
-    this.savedHandprints.push(handprint);
-    this.settings.handprints = this.savedHandprints;
-    saveSettings(this.settings);
-
-    // Update UI
-    this.updateHandprintList();
+    // Add to current session
+    this.handprintSessionCaptures.push(handprint);
 
     const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
       statusEl.innerHTML = `
         <div style="background:#243; padding:12px; border-radius:4px; margin-top:8px; color:#6f6;">
-          ✓ Handprint Saved!<br/>
+          ✓ Handprint ${this.handprintSessionCaptures.length} Saved!<br/>
           <strong>Comfort:</strong> ${comfortRating}/100<br/>
-          <strong>Device:</strong> ${deviceName}
+          <strong>Session total:</strong> ${this.handprintSessionCaptures.length} handprint(s)
+          <div style="margin-top:8px; border-top:1px solid #444; padding-top:8px;">
+            Press another pad to capture next handprint,<br/>
+            or click "Stop Capture Session" to finish.
+          </div>
         </div>
       `;
-
-      // Clear status after 2 seconds and prompt for another
-      setTimeout(() => {
-        statusEl.innerHTML = `
-          <div style="padding:8px; opacity:0.7;">
-            Capture another handprint or switch hands?
-          </div>
-        `;
-      }, 2000);
     }
 
-    // Clear captures but keep mode ready for next capture
+    // Clear captures and prepare for next handprint (reuse basenote)
     this.handprintCaptures = [];
+    this.handprintCaptureState = 'capturing_fingers';
+
+    // Update counter for next capture
+    const counterEl = document.getElementById('handprintCounter');
+    if (counterEl) {
+      counterEl.textContent = `Captured: 0/5`;
+    }
+
     this.render();
   }
 
@@ -1040,13 +1085,55 @@ class ExquisFingerings {
    */
   discardHandprint() {
     this.handprintCaptures = [];
+    this.handprintCaptureState = 'capturing_fingers';
 
     const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
-      statusEl.innerHTML = '';
+      statusEl.innerHTML = `
+        <div style="padding:8px; opacity:0.7;">
+          Handprint discarded. Press another pad to capture next.
+        </div>
+      `;
+
+      setTimeout(() => {
+        statusEl.innerHTML = '';
+      }, 2000);
+    }
+
+    // Update counter for next capture
+    const counterEl = document.getElementById('handprintCounter');
+    if (counterEl) {
+      counterEl.textContent = `Captured: 0/5`;
     }
 
     this.render();
+  }
+
+  /**
+   * Save handprint session
+   */
+  saveHandprintSession() {
+    if (this.handprintSessionCaptures.length === 0) {
+      return;
+    }
+
+    // Create session object
+    const sessionID = `session_${Date.now()}`;
+    const session = {
+      id: sessionID,
+      baseMidi: this.handprintSessionBaseMidi,
+      hand: this.handprintCaptureHand,
+      handprints: this.handprintSessionCaptures,
+      capturedAt: Date.now()
+    };
+
+    // Save to settings
+    this.savedHandprints.push(session);
+    this.settings.handprints = this.savedHandprints;
+    saveSettings(this.settings);
+
+    // Update UI
+    this.updateHandprintList();
   }
 
   /**
@@ -1058,21 +1145,21 @@ class ExquisFingerings {
     const clearBtn = document.getElementById('clearHandprints');
 
     if (this.savedHandprints.length === 0) {
-      listEl.innerHTML = '<div style="opacity:0.7;">No handprints captured yet.</div>';
+      listEl.innerHTML = '<div style="opacity:0.7;">No sessions captured yet.</div>';
       exportBtn.style.display = 'none';
       clearBtn.style.display = 'none';
       return;
     }
 
-    listEl.innerHTML = this.savedHandprints.map(hp => {
-      const date = new Date(hp.capturedAt);
+    listEl.innerHTML = this.savedHandprints.map(session => {
+      const date = new Date(session.capturedAt);
       const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const orientation = hp.orientation || 'portrait';
-      const baseMidi = hp.baseMidi || 48;
+      const baseMidi = session.baseMidi;
+      const handprintCount = session.handprints.length;
       return `
-        <div class="handprint-item ${hp.hand}">
-          <strong>${hp.hand.toUpperCase()}</strong> hand - ${timeStr}<br/>
-          <span style="font-size:0.85em; opacity:0.7;">${orientation} | MIDI ${baseMidi}</span>
+        <div class="handprint-item ${session.hand}">
+          <strong>Session:</strong> ${handprintCount} handprint${handprintCount > 1 ? 's' : ''}<br/>
+          <span style="font-size:0.85em; opacity:0.7;">${session.hand.toUpperCase()} | MIDI ${baseMidi} | ${timeStr}</span>
         </div>
       `;
     }).join('');
@@ -1082,10 +1169,11 @@ class ExquisFingerings {
   }
 
   /**
-   * Clear all saved handprints
+   * Clear all saved sessions
    */
   clearAllHandprints() {
-    if (!confirm(`Clear all ${this.savedHandprints.length} saved handprints?\n\nThis cannot be undone!`)) {
+    const totalHandprints = this.savedHandprints.reduce((sum, session) => sum + session.handprints.length, 0);
+    if (!confirm(`Clear all ${this.savedHandprints.length} session(s) (${totalHandprints} handprints)?\n\nThis cannot be undone!`)) {
       return;
     }
 
@@ -1094,21 +1182,23 @@ class ExquisFingerings {
     saveSettings(this.settings);
 
     this.updateHandprintList();
-    alert('All handprints cleared.');
+    alert('All sessions cleared.');
   }
 
   /**
-   * Export all handprints to JSON
+   * Export all sessions to JSON
    */
   exportHandprints() {
     if (this.savedHandprints.length === 0) {
-      alert('No handprints to export.');
+      alert('No sessions to export.');
       return;
     }
 
+    const totalHandprints = this.savedHandprints.reduce((sum, session) => sum + session.handprints.length, 0);
+
     const data = {
       exportedAt: new Date().toISOString(),
-      handprints: this.savedHandprints
+      sessions: this.savedHandprints
     };
 
     const json = JSON.stringify(data, null, 2);
@@ -1117,13 +1207,13 @@ class ExquisFingerings {
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `handprints_${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.json`;
+    a.download = `handprint_sessions_${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    alert(`Exported ${this.savedHandprints.length} handprints to JSON file.`);
+    alert(`Exported ${this.savedHandprints.length} session(s) (${totalHandprints} handprints) to JSON file.`);
   }
 }
 
