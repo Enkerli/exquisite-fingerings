@@ -224,6 +224,11 @@ class ExquisFingerings {
       this.exportHandprints();
     });
 
+    // Clear handprints
+    document.getElementById('clearHandprints')?.addEventListener('click', () => {
+      this.clearAllHandprints();
+    });
+
     // Fingering type
     document.getElementById('fingeringType')?.addEventListener('change', (e) => {
       this.settings.fingeringType = e.target.value;
@@ -291,8 +296,19 @@ class ExquisFingerings {
     this.gridRenderer.setLabelMode(this.settings.labelMode);
     this.gridRenderer.setBaseMidi(this.settings.baseMidi);
     this.gridRenderer.setHighlightedPCs(this.getHighlightedPCs());
-    this.gridRenderer.setFingeringPattern(this.currentPattern);
-    this.gridRenderer.setFingeringMode(this.fingeringMode);
+
+    // During handprint capture, show the captured fingers on grid
+    if (this.handprintMode && this.handprintCaptures.length > 0) {
+      const tempPattern = new FingeringPattern('temp_handprint');
+      this.handprintCaptures.forEach(cap => {
+        tempPattern.setFingering(cap.row, cap.col, this.handprintCaptureHand, cap.finger);
+      });
+      this.gridRenderer.setFingeringPattern(tempPattern);
+    } else {
+      this.gridRenderer.setFingeringPattern(this.currentPattern);
+    }
+
+    this.gridRenderer.setFingeringMode(this.fingeringMode || this.handprintMode);
     this.gridRenderer.render();
   }
 
@@ -738,11 +754,11 @@ class ExquisFingerings {
     if (statusEl) {
       statusEl.innerHTML = `
         <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
-          <strong>Capture Active</strong><br/>
-          Place your <strong>${this.handprintCaptureHand}</strong> hand on the device.<br/>
-          Press pads in order: <strong>👍 1 → 2 → 3 → 4 → 5 🤙</strong>
+          <strong>Capture Active - ${this.handprintCaptureHand.toUpperCase()} hand</strong><br/>
+          <strong style="color:#fa0;">Start at bottom-left pad (0,0)</strong><br/>
+          Then press: <strong>👍 1 → 2 → 3 → 4 → 5 🤙</strong>
           <div style="margin-top:8px; font-size:1.2em; color:#6af;">
-            <strong>Captured: ${this.handprintCaptures.length}/5</strong>
+            <strong id="handprintCounter">Captured: 0/5</strong>
           </div>
         </div>
       `;
@@ -788,15 +804,12 @@ class ExquisFingerings {
       });
 
       // Update counter
-      const statusEl = document.getElementById('handprintCaptureStatus');
-      if (statusEl) {
-        const counterEl = statusEl.querySelector('div:last-child strong');
-        if (counterEl) {
-          counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5`;
-        }
+      const counterEl = document.getElementById('handprintCounter');
+      if (counterEl) {
+        counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5`;
       }
 
-      // Visual feedback on grid
+      // Visual feedback on grid (show numbered fingers)
       this.render();
 
       if (this.handprintCaptures.length === 5) {
@@ -824,15 +837,12 @@ class ExquisFingerings {
     });
 
     // Update counter
-    const statusEl = document.getElementById('handprintCaptureStatus');
-    if (statusEl) {
-      const counterEl = statusEl.querySelector('div:last-child strong');
-      if (counterEl) {
-        counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5 (click)`;
-      }
+    const counterEl = document.getElementById('handprintCounter');
+    if (counterEl) {
+      counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5 (click)`;
     }
 
-    // Visual feedback on grid
+    // Visual feedback on grid (show numbered fingers)
     this.render();
 
     if (this.handprintCaptures.length === 5) {
@@ -861,11 +871,13 @@ class ExquisFingerings {
       }
     }
 
-    // Create handprint with unique ID
+    // Create handprint with unique ID and complete metadata
     const handprintID = `${this.handprintCaptureHand}_${Date.now()}`;
     const handprint = {
       id: handprintID,
       hand: this.handprintCaptureHand,
+      orientation: this.settings.orientation,
+      baseMidi: this.settings.baseMidi,
       positions: this.handprintCaptures,
       measurements,
       capturedAt: Date.now()
@@ -910,25 +922,46 @@ class ExquisFingerings {
   updateHandprintList() {
     const listEl = document.getElementById('handprintList');
     const exportBtn = document.getElementById('exportHandprints');
+    const clearBtn = document.getElementById('clearHandprints');
 
     if (this.savedHandprints.length === 0) {
       listEl.innerHTML = '<div style="opacity:0.7;">No handprints captured yet.</div>';
       exportBtn.style.display = 'none';
+      clearBtn.style.display = 'none';
       return;
     }
 
     listEl.innerHTML = this.savedHandprints.map(hp => {
       const date = new Date(hp.capturedAt);
       const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const orientation = hp.orientation || 'portrait';
+      const baseMidi = hp.baseMidi || 48;
       return `
         <div class="handprint-item ${hp.hand}">
           <strong>${hp.hand.toUpperCase()}</strong> hand - ${timeStr}<br/>
-          <span style="font-size:0.9em; opacity:0.7;">ID: ${hp.id}</span>
+          <span style="font-size:0.85em; opacity:0.7;">${orientation} | MIDI ${baseMidi}</span>
         </div>
       `;
     }).join('');
 
     exportBtn.style.display = 'block';
+    clearBtn.style.display = 'block';
+  }
+
+  /**
+   * Clear all saved handprints
+   */
+  clearAllHandprints() {
+    if (!confirm(`Clear all ${this.savedHandprints.length} saved handprints?\n\nThis cannot be undone!`)) {
+      return;
+    }
+
+    this.savedHandprints = [];
+    this.settings.handprints = [];
+    saveSettings(this.settings);
+
+    this.updateHandprintList();
+    alert('All handprints cleared.');
   }
 
   /**
