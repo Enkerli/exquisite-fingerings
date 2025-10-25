@@ -727,6 +727,12 @@ class ExquisFingerings {
    * Auto-enables MIDI if not already enabled
    */
   async startHandprintCapture() {
+    // If already in handprint mode, cancel instead
+    if (this.handprintMode) {
+      this.cancelHandprintCapture();
+      return;
+    }
+
     // Auto-enable MIDI if not enabled
     if (!midiManager.getStatus().isInitialized) {
       try {
@@ -755,6 +761,7 @@ class ExquisFingerings {
       statusEl.innerHTML = `
         <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
           <strong>Capture Active - ${this.handprintCaptureHand.toUpperCase()} hand</strong><br/>
+          <strong style="color:#fa0;">⚠️ Set Exquis to CHROMATIC layout first!</strong><br/>
           <strong style="color:#fa0;">Start at bottom-left pad (0,0)</strong><br/>
           Then press: <strong>👍 1 → 2 → 3 → 4 → 5 🤙</strong>
           <div style="margin-top:8px; font-size:1.2em; color:#6af;">
@@ -780,6 +787,36 @@ class ExquisFingerings {
     const startBtn = document.getElementById('startHandprintCapture');
     startBtn.textContent = 'Cancel Capture';
     startBtn.style.background = '#c44';
+  }
+
+  /**
+   * Cancel handprint capture in progress
+   */
+  cancelHandprintCapture() {
+    this.handprintMode = false;
+    this.handprintCaptures = [];
+    midiManager.setNoteHandler(null);
+
+    const statusEl = document.getElementById('handprintCaptureStatus');
+    if (statusEl) {
+      statusEl.innerHTML = `
+        <div style="padding:8px; opacity:0.7;">
+          Capture cancelled.
+        </div>
+      `;
+
+      // Clear message after 2 seconds
+      setTimeout(() => {
+        statusEl.innerHTML = '';
+      }, 2000);
+    }
+
+    // Reset button
+    const startBtn = document.getElementById('startHandprintCapture');
+    startBtn.textContent = 'Start Capture';
+    startBtn.style.background = '';
+
+    this.render();
   }
 
   /**
@@ -851,12 +888,68 @@ class ExquisFingerings {
   }
 
   /**
-   * Complete handprint capture and save with unique ID
+   * Complete handprint capture and ask for comfort rating
    */
   finishHandprintCapture() {
     this.handprintMode = false;
     midiManager.setNoteHandler(null);
 
+    // Show comfort rating UI
+    const statusEl = document.getElementById('handprintCaptureStatus');
+    if (statusEl) {
+      statusEl.innerHTML = `
+        <div style="background:#243; padding:12px; border-radius:4px; margin-top:8px;">
+          <strong>Handprint Captured!</strong><br/>
+          How comfortable was this position?
+          <div style="margin-top:12px;">
+            <input type="range" id="comfortRating" min="0" max="100" value="100"
+                   style="width:100%;" />
+            <div style="display:flex; justify-content:space-between; font-size:0.85em; opacity:0.7;">
+              <span>Uncomfortable</span>
+              <span id="comfortValue">100</span>
+              <span>Very Comfortable</span>
+            </div>
+          </div>
+          <button id="saveHandprintWithRating" style="width:100%; margin-top:12px; background:#4a6;">
+            Save Handprint
+          </button>
+          <button id="discardHandprint" style="width:100%; margin-top:4px; background:#666;">
+            Discard
+          </button>
+        </div>
+      `;
+
+      // Update comfort value display
+      const slider = document.getElementById('comfortRating');
+      const valueDisplay = document.getElementById('comfortValue');
+      slider?.addEventListener('input', (e) => {
+        valueDisplay.textContent = e.target.value;
+      });
+
+      // Save button
+      document.getElementById('saveHandprintWithRating')?.addEventListener('click', () => {
+        const comfort = parseInt(slider?.value || '100');
+        this.saveHandprint(comfort);
+      });
+
+      // Discard button
+      document.getElementById('discardHandprint')?.addEventListener('click', () => {
+        this.discardHandprint();
+      });
+    }
+
+    // Reset button
+    const startBtn = document.getElementById('startHandprintCapture');
+    startBtn.textContent = 'Start Capture';
+    startBtn.style.background = '';
+
+    this.render();
+  }
+
+  /**
+   * Save handprint with comfort rating
+   */
+  saveHandprint(comfortRating) {
     // Calculate all finger-pair distances
     const measurements = {};
     for (let i = 0; i < 5; i++) {
@@ -871,6 +964,10 @@ class ExquisFingerings {
       }
     }
 
+    // Get MIDI device name
+    const midiStatus = midiManager.getStatus();
+    const deviceName = midiStatus.deviceName || 'Unknown';
+
     // Create handprint with unique ID and complete metadata
     const handprintID = `${this.handprintCaptureHand}_${Date.now()}`;
     const handprint = {
@@ -878,6 +975,8 @@ class ExquisFingerings {
       hand: this.handprintCaptureHand,
       orientation: this.settings.orientation,
       baseMidi: this.settings.baseMidi,
+      midiDevice: deviceName,
+      comfortRating,
       positions: this.handprintCaptures,
       measurements,
       capturedAt: Date.now()
@@ -896,22 +995,36 @@ class ExquisFingerings {
       statusEl.innerHTML = `
         <div style="background:#243; padding:12px; border-radius:4px; margin-top:8px; color:#6f6;">
           ✓ Handprint Saved!<br/>
-          <strong>ID:</strong> ${handprintID}<br/>
-          <strong>Hand:</strong> ${this.handprintCaptureHand}<br/>
-          <strong>Measurements:</strong> ${Object.keys(measurements).length} finger pairs
+          <strong>Comfort:</strong> ${comfortRating}/100<br/>
+          <strong>Device:</strong> ${deviceName}
         </div>
       `;
 
-      // Clear status after 3 seconds
+      // Clear status after 2 seconds and prompt for another
       setTimeout(() => {
-        statusEl.innerHTML = '';
-      }, 3000);
+        statusEl.innerHTML = `
+          <div style="padding:8px; opacity:0.7;">
+            Capture another handprint or switch hands?
+          </div>
+        `;
+      }, 2000);
     }
 
-    // Reset button
-    const startBtn = document.getElementById('startHandprintCapture');
-    startBtn.textContent = 'Start Capture';
-    startBtn.style.background = '';
+    // Clear captures but keep mode ready for next capture
+    this.handprintCaptures = [];
+    this.render();
+  }
+
+  /**
+   * Discard captured handprint
+   */
+  discardHandprint() {
+    this.handprintCaptures = [];
+
+    const statusEl = document.getElementById('handprintCaptureStatus');
+    if (statusEl) {
+      statusEl.innerHTML = '';
+    }
 
     this.render();
   }
