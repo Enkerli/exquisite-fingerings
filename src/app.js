@@ -929,29 +929,59 @@ class ExquisFingerings {
    * Handle pad click during handprint capture (fallback if no MIDI)
    */
   handleHandprintClick(row, col) {
-    if (this.handprintCaptures.length >= 5) return;
-
     const padIndex = getPadIndex(row, col);
 
-    this.handprintCaptures.push({
-      row,
-      col,
-      padIndex,
-      finger: this.handprintCaptures.length + 1,
-      timestamp: Date.now()
-    });
+    if (this.handprintCaptureState === 'waiting_basenote') {
+      // Set basenote from clicked pad
+      const midiNote = this.settings.baseMidi + padIndex;
+      this.handprintSessionBaseMidi = midiNote;
+      this.settings.baseMidi = midiNote;
+      this.handprintCaptureState = 'capturing_fingers';
+      this.handprintCaptures = [];
 
-    // Update counter
-    const counterEl = document.getElementById('handprintCounter');
-    if (counterEl) {
-      counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5 (click)`;
+      const statusEl = document.getElementById('handprintCaptureStatus');
+      if (statusEl) {
+        statusEl.innerHTML = `
+          <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
+            <strong>Basenote Set: MIDI ${midiNote} (pad ${padIndex})</strong><br/>
+            <strong style="color:#6f6;">STEP 2: Click 5 pads in order 👍 1 → 2 → 3 → 4 → 5 🤙</strong>
+            <div style="margin-top:8px; font-size:1.2em; color:#6af;">
+              <strong id="handprintCounter">Captured: 0/5</strong>
+            </div>
+          </div>
+        `;
+      }
+
+      this.render();
+      return;
     }
 
-    // Visual feedback on grid (show numbered fingers)
-    this.render();
+    if (this.handprintCaptureState === 'capturing_fingers') {
+      if (this.handprintCaptures.length >= 5) return;
 
-    if (this.handprintCaptures.length === 5) {
-      this.finishHandprintCapture();
+      const midiNote = this.handprintSessionBaseMidi + padIndex;
+
+      this.handprintCaptures.push({
+        row,
+        col,
+        padIndex,
+        midiNote,
+        finger: this.handprintCaptures.length + 1,
+        timestamp: Date.now()
+      });
+
+      // Update counter
+      const counterEl = document.getElementById('handprintCounter');
+      if (counterEl) {
+        counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5 (click)`;
+      }
+
+      // Visual feedback on grid (show numbered fingers)
+      this.render();
+
+      if (this.handprintCaptures.length === 5) {
+        this.finishHandprintCapture();
+      }
     }
   }
 
