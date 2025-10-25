@@ -7,6 +7,7 @@ import { GridRenderer } from './ui/svg-grid.js';
 import { midiManager } from './core/midi.js';
 import { FingeringPattern, ergoAnalyzer } from './core/fingering.js';
 import { getPitchClasses, parseCustomPitchClasses, PITCH_CLASS_SETS } from './core/music.js';
+import { getRowCol, getPadIndex } from './core/grid.js';
 import { savePattern, loadPattern, deletePattern, getPatternNames, saveSettings, loadSettings } from './utils/storage.js';
 
 /**
@@ -716,6 +717,14 @@ class ExquisFingerings {
         await midiManager.init();
         this.updateMIDIDeviceList();
         this.updateMIDIStatus();
+
+        // Auto-select first output device if available
+        const devices = midiManager.getOutputDevices();
+        if (devices.length > 0) {
+          midiManager.selectOutputDevice(devices[0].id);
+          document.getElementById('midiDevice').value = devices[0].id;
+          this.updateMIDIStatus();
+        }
       } catch (err) {
         alert(`Cannot enable MIDI: ${err.message}\n\nFallback: You can click pads on the grid instead.`);
       }
@@ -723,6 +732,7 @@ class ExquisFingerings {
 
     this.handprintMode = true;
     this.handprintCaptures = [];
+    this.lastHandprintNoteTime = 0;  // For debouncing
 
     const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
@@ -738,10 +748,15 @@ class ExquisFingerings {
       `;
     }
 
-    // Listen for MIDI input
+    // Listen for MIDI input - only note ON events (velocity > 0)
     midiManager.setNoteHandler((midiNote, velocity) => {
       if (this.handprintMode && velocity > 0) {
-        this.handleHandprintMidiNote(midiNote);
+        // Debounce rapid note events (prevent note on + off triggering twice)
+        const now = Date.now();
+        if (now - this.lastHandprintNoteTime > 100) {  // 100ms debounce
+          this.lastHandprintNoteTime = now;
+          this.handleHandprintMidiNote(midiNote);
+        }
       }
     });
 
@@ -757,27 +772,38 @@ class ExquisFingerings {
   handleHandprintMidiNote(midiNote) {
     if (this.handprintCaptures.length >= 5) return;
 
-    // Convert MIDI note to (row, col)
+    // Convert MIDI note to pad index
     const padIndex = midiNote - this.settings.baseMidi;
-    const row = Math.floor(padIndex / 6); // Approximate
-    const col = padIndex % 6;
 
-    this.handprintCaptures.push({ row, col, midiNote, finger: this.handprintCaptures.length + 1 });
+    // Convert pad index to (row, col) using proper grid logic
+    try {
+      const { row, col } = getRowCol(padIndex);
 
-    // Update counter
-    const statusEl = document.getElementById('handprintCaptureStatus');
-    if (statusEl) {
-      const counterEl = statusEl.querySelector('div:last-child strong');
-      if (counterEl) {
-        counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5`;
+      this.handprintCaptures.push({
+        row,
+        col,
+        padIndex,
+        finger: this.handprintCaptures.length + 1,
+        timestamp: Date.now()
+      });
+
+      // Update counter
+      const statusEl = document.getElementById('handprintCaptureStatus');
+      if (statusEl) {
+        const counterEl = statusEl.querySelector('div:last-child strong');
+        if (counterEl) {
+          counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5`;
+        }
       }
-    }
 
-    // Visual feedback on grid
-    this.render();
+      // Visual feedback on grid
+      this.render();
 
-    if (this.handprintCaptures.length === 5) {
-      this.finishHandprintCapture();
+      if (this.handprintCaptures.length === 5) {
+        this.finishHandprintCapture();
+      }
+    } catch (err) {
+      console.error('Invalid pad index from MIDI note:', midiNote, padIndex, err);
     }
   }
 
@@ -787,7 +813,15 @@ class ExquisFingerings {
   handleHandprintClick(row, col) {
     if (this.handprintCaptures.length >= 5) return;
 
-    this.handprintCaptures.push({ row, col, finger: this.handprintCaptures.length + 1 });
+    const padIndex = getPadIndex(row, col);
+
+    this.handprintCaptures.push({
+      row,
+      col,
+      padIndex,
+      finger: this.handprintCaptures.length + 1,
+      timestamp: Date.now()
+    });
 
     // Update counter
     const statusEl = document.getElementById('handprintCaptureStatus');
