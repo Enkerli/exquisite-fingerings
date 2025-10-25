@@ -23,8 +23,9 @@ class ExquisFingerings {
 
     // Handprint capture state
     this.handprintMode = false;
-    this.handprintClicks = [];
-    this.handprintData = null;
+    this.handprintCaptures = [];  // Current capture in progress
+    this.handprintCaptureHand = 'right';  // Selected hand for capture
+    this.savedHandprints = this.settings.handprints || [];  // All saved handprints
 
     // UI Elements
     this.gridElement = document.getElementById('grid');
@@ -34,6 +35,7 @@ class ExquisFingerings {
     this.initUI();
     this.loadStoredSettings();
     this.updatePatternMetadata();
+    this.updateHandprintList();
     this.render();
   }
 
@@ -200,21 +202,25 @@ class ExquisFingerings {
       ergoAnalyzer.setHandSize(value);
       this.settings.handSize = value;
       saveSettings(this.settings);
-
-      // Show/hide handprint section
-      const handprintSection = document.getElementById('handprintSection');
-      if (handprintSection) {
-        handprintSection.style.display = value === 'custom' ? 'block' : 'none';
-      }
     });
 
-    // Handprint capture
-    document.getElementById('captureHandprint')?.addEventListener('click', () => {
+    // Hand selection for handprint capture
+    document.getElementById('selectLeftHand')?.addEventListener('click', () => {
+      this.selectHandForCapture('left');
+    });
+
+    document.getElementById('selectRightHand')?.addEventListener('click', () => {
+      this.selectHandForCapture('right');
+    });
+
+    // Start handprint capture
+    document.getElementById('startHandprintCapture')?.addEventListener('click', () => {
       this.startHandprintCapture();
     });
 
-    document.getElementById('clearHandprint')?.addEventListener('click', () => {
-      this.clearHandprint();
+    // Export handprints
+    document.getElementById('exportHandprints')?.addEventListener('click', () => {
+      this.exportHandprints();
     });
 
     // Fingering type
@@ -681,28 +687,52 @@ class ExquisFingerings {
   }
 
   /**
-   * Start handprint capture mode
-   * User plays 5 pads on physical Exquis device in sequence: thumb, index, middle, ring, pinkie
+   * Select hand for handprint capture
    */
-  startHandprintCapture() {
-    if (!midiManager.getStatus().isEnabled) {
-      alert('Please enable MIDI first to capture handprint from your Exquis device.');
-      return;
+  selectHandForCapture(hand) {
+    this.handprintCaptureHand = hand;
+
+    // Update button states
+    const leftBtn = document.getElementById('selectLeftHand');
+    const rightBtn = document.getElementById('selectRightHand');
+
+    if (hand === 'left') {
+      leftBtn?.classList.add('active');
+      rightBtn?.classList.remove('active');
+    } else {
+      rightBtn?.classList.add('active');
+      leftBtn?.classList.remove('active');
+    }
+  }
+
+  /**
+   * Start handprint capture
+   * Auto-enables MIDI if not already enabled
+   */
+  async startHandprintCapture() {
+    // Auto-enable MIDI if not enabled
+    if (!midiManager.getStatus().isInitialized) {
+      try {
+        await midiManager.init();
+        this.updateMIDIDeviceList();
+        this.updateMIDIStatus();
+      } catch (err) {
+        alert(`Cannot enable MIDI: ${err.message}\n\nFallback: You can click pads on the grid instead.`);
+      }
     }
 
     this.handprintMode = true;
-    this.handprintClicks = [];
+    this.handprintCaptures = [];
 
-    const statusEl = document.getElementById('handprintStatus');
+    const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
       statusEl.innerHTML = `
-        <div style="background:#334; padding:8px; border-radius:4px; margin-top:8px;">
-          <strong>Handprint Capture Active</strong><br/>
-          Place your ${this.currentHand} hand in a comfortable position on your Exquis device.<br/>
-          <em>Press pads in sequence:</em><br/>
-          1️⃣ Thumb → 2️⃣ Index → 3️⃣ Middle → 4️⃣ Ring → 5️⃣ Pinkie
-          <div style="margin-top:4px; font-size:1.1em;">
-            Captured: ${this.handprintClicks.length}/5
+        <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
+          <strong>Capture Active</strong><br/>
+          Place your <strong>${this.handprintCaptureHand}</strong> hand on the device.<br/>
+          Press pads in order: <strong>👍 1 → 2 → 3 → 4 → 5 🤙</strong>
+          <div style="margin-top:8px; font-size:1.2em; color:#6af;">
+            <strong>Captured: ${this.handprintCaptures.length}/5</strong>
           </div>
         </div>
       `;
@@ -715,31 +745,38 @@ class ExquisFingerings {
       }
     });
 
-    document.getElementById('captureHandprint').textContent = 'Cancel Capture';
-    document.getElementById('captureHandprint').onclick = () => {
-      this.cancelHandprintCapture();
-    };
+    // Change button to Cancel
+    const startBtn = document.getElementById('startHandprintCapture');
+    startBtn.textContent = 'Cancel Capture';
+    startBtn.style.background = '#c44';
   }
 
   /**
    * Handle MIDI note during handprint capture
    */
   handleHandprintMidiNote(midiNote) {
-    if (this.handprintClicks.length >= 5) return;
+    if (this.handprintCaptures.length >= 5) return;
 
     // Convert MIDI note to (row, col)
     const padIndex = midiNote - this.settings.baseMidi;
     const row = Math.floor(padIndex / 6); // Approximate
     const col = padIndex % 6;
 
-    this.handprintClicks.push({ row, col, midiNote, finger: this.handprintClicks.length + 1 });
+    this.handprintCaptures.push({ row, col, midiNote, finger: this.handprintCaptures.length + 1 });
 
-    const statusEl = document.getElementById('handprintStatus');
+    // Update counter
+    const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
-      statusEl.querySelector('div:last-child').textContent = `Captured: ${this.handprintClicks.length}/5`;
+      const counterEl = statusEl.querySelector('div:last-child strong');
+      if (counterEl) {
+        counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5`;
+      }
     }
 
-    if (this.handprintClicks.length === 5) {
+    // Visual feedback on grid
+    this.render();
+
+    if (this.handprintCaptures.length === 5) {
       this.finishHandprintCapture();
     }
   }
@@ -748,36 +785,40 @@ class ExquisFingerings {
    * Handle pad click during handprint capture (fallback if no MIDI)
    */
   handleHandprintClick(row, col) {
-    if (this.handprintClicks.length >= 5) return;
+    if (this.handprintCaptures.length >= 5) return;
 
-    this.handprintClicks.push({ row, col, finger: this.handprintClicks.length + 1 });
+    this.handprintCaptures.push({ row, col, finger: this.handprintCaptures.length + 1 });
 
-    const statusEl = document.getElementById('handprintStatus');
+    // Update counter
+    const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
-      statusEl.querySelector('div:last-child').textContent = `Captured: ${this.handprintClicks.length}/5 (click mode)`;
+      const counterEl = statusEl.querySelector('div:last-child strong');
+      if (counterEl) {
+        counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5 (click)`;
+      }
     }
 
-    // Render to show which pads were clicked
+    // Visual feedback on grid
     this.render();
 
-    if (this.handprintClicks.length === 5) {
+    if (this.handprintCaptures.length === 5) {
       this.finishHandprintCapture();
     }
   }
 
   /**
-   * Complete handprint capture and calculate measurements
+   * Complete handprint capture and save with unique ID
    */
   finishHandprintCapture() {
     this.handprintMode = false;
-    midiManager.setNoteHandler(null); // Clear MIDI handler
+    midiManager.setNoteHandler(null);
 
     // Calculate all finger-pair distances
     const measurements = {};
     for (let i = 0; i < 5; i++) {
       for (let j = i + 1; j < 5; j++) {
-        const pad1 = this.handprintClicks[i];
-        const pad2 = this.handprintClicks[j];
+        const pad1 = this.handprintCaptures[i];
+        const pad2 = this.handprintCaptures[j];
         const distance = Math.sqrt(
           Math.pow(pad2.row - pad1.row, 2) + Math.pow(pad2.col - pad1.col, 2)
         );
@@ -786,80 +827,103 @@ class ExquisFingerings {
       }
     }
 
-    this.handprintData = {
-      hand: this.currentHand,
-      positions: this.handprintClicks,
+    // Create handprint with unique ID
+    const handprintID = `${this.handprintCaptureHand}_${Date.now()}`;
+    const handprint = {
+      id: handprintID,
+      hand: this.handprintCaptureHand,
+      positions: this.handprintCaptures,
       measurements,
       capturedAt: Date.now()
     };
 
     // Save to settings
-    this.settings.handprints = this.settings.handprints || [];
-    this.settings.handprints.push(this.handprintData);
+    this.savedHandprints.push(handprint);
+    this.settings.handprints = this.savedHandprints;
     saveSettings(this.settings);
 
-    // Update ergo analyzer
-    ergoAnalyzer.setCustomHandprint(measurements);
+    // Update UI
+    this.updateHandprintList();
 
-    const statusEl = document.getElementById('handprintStatus');
+    const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
       statusEl.innerHTML = `
-        <div style="background:#243; padding:8px; border-radius:4px; margin-top:8px; color:#6f6;">
-          ✓ Handprint captured!<br/>
-          ${this.currentHand} hand, ${Object.keys(measurements).length} measurements recorded
+        <div style="background:#243; padding:12px; border-radius:4px; margin-top:8px; color:#6f6;">
+          ✓ Handprint Saved!<br/>
+          <strong>ID:</strong> ${handprintID}<br/>
+          <strong>Hand:</strong> ${this.handprintCaptureHand}<br/>
+          <strong>Measurements:</strong> ${Object.keys(measurements).length} finger pairs
         </div>
       `;
+
+      // Clear status after 3 seconds
+      setTimeout(() => {
+        statusEl.innerHTML = '';
+      }, 3000);
     }
 
-    document.getElementById('captureHandprint').textContent = 'Start Handprint Capture';
-    document.getElementById('captureHandprint').onclick = () => {
-      this.startHandprintCapture();
-    };
-    document.getElementById('clearHandprint').style.display = 'block';
-
-    this.render();
-    alert(`Handprint captured! ${this.currentHand} hand with ${this.handprintClicks.length} finger positions.`);
-  }
-
-  /**
-   * Cancel handprint capture
-   */
-  cancelHandprintCapture() {
-    this.handprintMode = false;
-    this.handprintClicks = [];
-    midiManager.setNoteHandler(null);
-
-    const statusEl = document.getElementById('handprintStatus');
-    if (statusEl) {
-      statusEl.innerHTML = '';
-    }
-
-    document.getElementById('captureHandprint').textContent = 'Start Handprint Capture';
-    document.getElementById('captureHandprint').onclick = () => {
-      this.startHandprintCapture();
-    };
+    // Reset button
+    const startBtn = document.getElementById('startHandprintCapture');
+    startBtn.textContent = 'Start Capture';
+    startBtn.style.background = '';
 
     this.render();
   }
 
   /**
-   * Clear handprint and revert to preset
+   * Update handprint list display
    */
-  clearHandprint() {
-    if (!confirm('Clear custom handprint and revert to preset hand size?')) return;
+  updateHandprintList() {
+    const listEl = document.getElementById('handprintList');
+    const exportBtn = document.getElementById('exportHandprints');
 
-    this.handprintData = null;
-    this.handprintClicks = [];
-    document.getElementById('handSize').value = 'medium';
-    ergoAnalyzer.setHandSize('medium');
-    this.settings.handSize = 'medium';
-    saveSettings(this.settings);
+    if (this.savedHandprints.length === 0) {
+      listEl.innerHTML = '<div style="opacity:0.7;">No handprints captured yet.</div>';
+      exportBtn.style.display = 'none';
+      return;
+    }
 
-    document.getElementById('handprintStatus').innerHTML = '';
-    document.getElementById('clearHandprint').style.display = 'none';
+    listEl.innerHTML = this.savedHandprints.map(hp => {
+      const date = new Date(hp.capturedAt);
+      const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return `
+        <div class="handprint-item ${hp.hand}">
+          <strong>${hp.hand.toUpperCase()}</strong> hand - ${timeStr}<br/>
+          <span style="font-size:0.9em; opacity:0.7;">ID: ${hp.id}</span>
+        </div>
+      `;
+    }).join('');
 
-    this.render();
-    alert('Handprint cleared. Using medium preset.');
+    exportBtn.style.display = 'block';
+  }
+
+  /**
+   * Export all handprints to JSON
+   */
+  exportHandprints() {
+    if (this.savedHandprints.length === 0) {
+      alert('No handprints to export.');
+      return;
+    }
+
+    const data = {
+      exportedAt: new Date().toISOString(),
+      handprints: this.savedHandprints
+    };
+
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `handprints_${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    alert(`Exported ${this.savedHandprints.length} handprints to JSON file.`);
   }
 }
 

@@ -407,3 +407,39 @@ main {
 @media (prefers-color-scheme: dark) {
   /* Will implement dark mode later */
 }
+
+/* Hand selection buttons */
+.hand-select-btn {
+  background: #444;
+  border: 2px solid #666;
+  transition: all 0.2s;
+}
+
+.hand-select-btn:hover {
+  background: #555;
+  border-color: #888;
+}
+
+.hand-select-btn.active {
+  background: #446;
+  border-color: var(--primary);
+  font-weight: bold;
+}
+
+/* Handprint list */
+.handprint-item {
+  padding: 8px;
+  margin: 4px 0;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 0.85em;
+  border-left: 3px solid #666;
+}
+
+.handprint-item.left {
+  border-left-color: #0066cc;
+}
+
+.handprint-item.right {
+  border-left-color: #d00;
+}
