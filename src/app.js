@@ -740,11 +740,15 @@ class ExquisFingerings {
         this.updateMIDIDeviceList();
         this.updateMIDIStatus();
 
-        // Auto-select first output device if available
+        // Auto-select output device, preferring "Exquis" over others
         const devices = midiManager.getOutputDevices();
         if (devices.length > 0) {
-          midiManager.selectOutputDevice(devices[0].id);
-          document.getElementById('midiDevice').value = devices[0].id;
+          // Try to find "Exquis" device first
+          const exquisDevice = devices.find(d => d.name.toLowerCase().includes('exquis'));
+          const selectedDevice = exquisDevice || devices[0];
+
+          midiManager.selectOutputDevice(selectedDevice.id);
+          document.getElementById('midiDevice').value = selectedDevice.id;
           this.updateMIDIStatus();
         }
       } catch (err) {
@@ -756,14 +760,18 @@ class ExquisFingerings {
     this.handprintCaptures = [];
     this.lastHandprintNoteTime = 0;  // For debouncing
 
+    // Store original label mode and switch to chromatic (index) display
+    this.preCaptureLabelMode = this.settings.labelMode;
+    this.settings.labelMode = 'index';
+    this.render();
+
     const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
       statusEl.innerHTML = `
         <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
           <strong>Capture Active - ${this.handprintCaptureHand.toUpperCase()} hand</strong><br/>
-          <strong style="color:#fa0;">⚠️ Set Exquis to CHROMATIC layout first!</strong><br/>
-          <strong style="color:#fa0;">Start at bottom-left pad (0,0)</strong><br/>
-          Then press: <strong>👍 1 → 2 → 3 → 4 → 5 🤙</strong>
+          <strong style="color:#fa0;">⚠️ Exquis must be in CHROMATIC layout!</strong><br/>
+          Press comfortable position: <strong>👍 1 → 2 → 3 → 4 → 5 🤙</strong>
           <div style="margin-top:8px; font-size:1.2em; color:#6af;">
             <strong id="handprintCounter">Captured: 0/5</strong>
           </div>
@@ -796,6 +804,12 @@ class ExquisFingerings {
     this.handprintMode = false;
     this.handprintCaptures = [];
     midiManager.setNoteHandler(null);
+
+    // Restore original label mode
+    if (this.preCaptureLabelMode) {
+      this.settings.labelMode = this.preCaptureLabelMode;
+      this.preCaptureLabelMode = null;
+    }
 
     const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
@@ -893,6 +907,12 @@ class ExquisFingerings {
   finishHandprintCapture() {
     this.handprintMode = false;
     midiManager.setNoteHandler(null);
+
+    // Restore original label mode
+    if (this.preCaptureLabelMode) {
+      this.settings.labelMode = this.preCaptureLabelMode;
+      this.preCaptureLabelMode = null;
+    }
 
     // Show comfort rating UI
     const statusEl = document.getElementById('handprintCaptureStatus');
