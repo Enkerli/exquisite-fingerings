@@ -57,8 +57,11 @@ export function findChordFingerings(targetPitchClasses, handprints, baseMidi = 4
 
     for (const subset of fingerSubsets) {
       // Calculate pitch classes for this subset
+      // IMPORTANT: Recalculate padIndex from (row, col) in intervals mode
+      // Don't use stored padIndex (which was captured in chromatic mode)
       const pitchClasses = subset.map(pos => {
-        const midiNote = pos.midiNote || (baseMidi + pos.padIndex);
+        const padIndex = getPadIndex(pos.row, pos.col); // Recalculate in current grid mode
+        const midiNote = baseMidi + padIndex;
         return midiToPitchClass(midiNote);
       });
 
@@ -75,14 +78,18 @@ export function findChordFingerings(targetPitchClasses, handprints, baseMidi = 4
           baseMidi: handprint.baseMidi || baseMidi,
           midiDevice: handprint.midiDevice,
           capturedAt: handprint.capturedAt,
-          positions: subset.map(pos => ({
-            row: pos.row,
-            col: pos.col,
-            padIndex: pos.padIndex,
-            midiNote: pos.midiNote || (baseMidi + pos.padIndex),
-            finger: pos.finger,
-            pitchClass: midiToPitchClass(pos.midiNote || (baseMidi + pos.padIndex))
-          })),
+          positions: subset.map(pos => {
+            const padIndex = getPadIndex(pos.row, pos.col); // Recalculate in intervals mode
+            const midiNote = baseMidi + padIndex;
+            return {
+              row: pos.row,
+              col: pos.col,
+              padIndex: padIndex,  // Use recalculated padIndex
+              midiNote: midiNote,
+              finger: pos.finger,
+              pitchClass: midiToPitchClass(midiNote)
+            };
+          }),
           // Will be filled by scorer
           score: 0,
           geometricScore: 0,
