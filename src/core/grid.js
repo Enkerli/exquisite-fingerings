@@ -22,7 +22,7 @@ export function getRowLength(row) {
 }
 
 /**
- * Row start pad indexes
+ * Row start pad indexes for INTERVALS mode (musical thirds layout)
  * Pattern: 0, 4, 7, 11, 14, 18, 21, 25, 28, 32, 35
  * Increments alternate: +4, +3, +4, +3, ... (major third, minor third)
  *
@@ -33,7 +33,7 @@ export function getRowLength(row) {
  * Note: Pads repeat across rows because the grid is based on musical intervals,
  * not sequential pad numbering. Row lengths (6/5) describe physical layout only.
  */
-export const ROW_START = (() => {
+export const ROW_START_INTERVALS = (() => {
   const starts = [0];
   for (let r = 1; r < ROW_COUNT; r++) {
     const prev = starts[r - 1];
@@ -42,6 +42,70 @@ export const ROW_START = (() => {
   }
   return starts; // [0, 4, 7, 11, 14, 18, 21, 25, 28, 32, 35]
 })();
+
+/**
+ * Row start pad indexes for CHROMATIC mode (sequential layout)
+ * Pattern: 0, 6, 11, 17, 22, 28, 33, 39, 44, 50, 55
+ * Increments: +6, +5, +6, +5, ... (alternating by row length)
+ *
+ * This is the sequential pad numbering where each pad has unique MIDI note:
+ * - Row 0 (6 pads): 0-5
+ * - Row 1 (5 pads): 6-10
+ * - Row 2 (6 pads): 11-16
+ * - etc.
+ *
+ * Used for handprint capture to match physical Exquis in chromatic mode.
+ */
+export const ROW_START_CHROMATIC = (() => {
+  const starts = [0];
+  for (let r = 1; r < ROW_COUNT; r++) {
+    const prevRowLength = getRowLength(r - 1);
+    starts.push(starts[r - 1] + prevRowLength);
+  }
+  return starts; // [0, 6, 11, 17, 22, 28, 33, 39, 44, 50, 55]
+})();
+
+/**
+ * Current grid mode: 'intervals' or 'chromatic'
+ */
+let currentGridMode = 'intervals';
+
+/**
+ * Get current ROW_START based on grid mode
+ */
+function getRowStart() {
+  return currentGridMode === 'chromatic' ? ROW_START_CHROMATIC : ROW_START_INTERVALS;
+}
+
+/**
+ * Set grid mode
+ * @param {string} mode - 'intervals' or 'chromatic'
+ */
+export function setGridMode(mode) {
+  if (mode !== 'intervals' && mode !== 'chromatic') {
+    throw new Error(`Invalid grid mode: ${mode}. Must be 'intervals' or 'chromatic'.`);
+  }
+  currentGridMode = mode;
+}
+
+/**
+ * Get current grid mode
+ * @returns {string} Current mode ('intervals' or 'chromatic')
+ */
+export function getGridMode() {
+  return currentGridMode;
+}
+
+// Export ROW_START for backward compatibility (uses current mode)
+export const ROW_START = new Proxy({}, {
+  get(target, prop) {
+    const rowStart = getRowStart();
+    if (prop === 'length') return rowStart.length;
+    const index = parseInt(prop);
+    if (!isNaN(index)) return rowStart[index];
+    return rowStart[prop];
+  }
+});
 
 /**
  * Get the global pad index for a given row and column

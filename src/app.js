@@ -7,7 +7,7 @@ import { GridRenderer } from './ui/svg-grid.js';
 import { midiManager } from './core/midi.js';
 import { FingeringPattern, ergoAnalyzer } from './core/fingering.js';
 import { getPitchClasses, parseCustomPitchClasses, PITCH_CLASS_SETS } from './core/music.js';
-import { getRowCol, getPadIndex } from './core/grid.js';
+import { getRowCol, getPadIndex, setGridMode } from './core/grid.js';
 import { savePattern, loadPattern, deletePattern, getPatternNames, saveSettings, loadSettings } from './utils/storage.js';
 
 /**
@@ -783,6 +783,10 @@ class ExquisFingerings {
     // Store original label mode and switch to chromatic (index) display
     this.preCaptureLabelMode = this.settings.labelMode;
     this.settings.labelMode = 'index';
+
+    // Switch grid to chromatic mode (sequential pad numbering)
+    setGridMode('chromatic');
+
     this.render();
 
     const statusEl = document.getElementById('handprintCaptureStatus');
@@ -837,6 +841,9 @@ class ExquisFingerings {
       this.settings.labelMode = this.preCaptureLabelMode;
       this.preCaptureLabelMode = null;
     }
+
+    // Restore grid to intervals mode (musical thirds layout)
+    setGridMode('intervals');
 
     const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
