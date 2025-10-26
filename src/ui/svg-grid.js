@@ -90,6 +90,12 @@ export class GridRenderer {
    * Render the complete grid
    */
   render() {
+    console.log('[GridRenderer] render() called', {
+      svg: this.svg,
+      orientation: this.orientation,
+      labelMode: this.labelMode
+    });
+
     const vb = getViewBox(this.orientation);
     this.svg.setAttribute('viewBox', vb.viewBox);
 
@@ -105,14 +111,18 @@ export class GridRenderer {
     }
 
     // Render all pads
+    let padCount = 0;
     for (let row = 0; row < ROW_COUNT; row++) {
       const cols = getRowLength(row);
       for (let col = 0; col < cols; col++) {
         this._renderPad(gNode, row, col);
+        padCount++;
       }
     }
 
+    console.log(`[GridRenderer] Rendered ${padCount} pads`);
     this.svg.appendChild(gNode);
+    console.log('[GridRenderer] Grid appended to SVG');
   }
 
   /**

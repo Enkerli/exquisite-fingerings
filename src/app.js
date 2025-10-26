@@ -15,8 +15,11 @@ import { savePattern, loadPattern, deletePattern, getPatternNames, saveSettings,
  */
 class ExquisFingerings {
   constructor() {
+    console.log('[APP] Constructor started');
+
     // Ensure grid starts in intervals mode FIRST (before any grid calculations)
     setGridMode('intervals');
+    console.log('[APP] Grid mode set to intervals');
 
     // State
     this.settings = loadSettings();
@@ -37,7 +40,9 @@ class ExquisFingerings {
 
     // UI Elements
     this.gridElement = document.getElementById('grid');
+    console.log('[APP] Grid element:', this.gridElement);
     this.gridRenderer = new GridRenderer(this.gridElement);
+    console.log('[APP] GridRenderer created');
 
     // Initialize
     this.initUI();
@@ -46,7 +51,9 @@ class ExquisFingerings {
     this.updateHandprintList();
 
     // Initial render to ensure grid displays immediately
+    console.log('[APP] About to call initial render()');
     this.render();
+    console.log('[APP] Constructor completed');
   }
 
   /**
@@ -301,6 +308,7 @@ class ExquisFingerings {
    * Render the grid
    */
   render() {
+    console.log('[APP] render() called');
     this.gridRenderer.setOrientation(this.settings.orientation);
     this.gridRenderer.setLabelMode(this.settings.labelMode);
     this.gridRenderer.setBaseMidi(this.settings.baseMidi);
@@ -330,6 +338,7 @@ class ExquisFingerings {
 
     this.gridRenderer.setFingeringMode(this.fingeringMode || this.handprintMode);
     this.gridRenderer.render();
+    console.log('[APP] render() completed');
   }
 
   /**
