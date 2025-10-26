@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Exquisite Fingerings - Exquis Controller Explorer</title>
   <meta name="description" content="Interactive fingering explorer for Intuitive Instruments Exquis hex grid controller" />
-  <script type="module" crossorigin src="./assets/main-DgiOngFI.js"></script>
+  <script type="module" crossorigin src="./assets/main-B1aq3ynM.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/main-BCEeYRyw.css">
 </head>
 <body>
@@ -149,6 +149,82 @@
       <button id="clearHandprints" class="danger" style="width:100%; margin-top:4px; display:none;">
         Clear All Handprints
       </button>
+    </div>
+
+    <div class="sep"></div>
+
+    <h3>Chord Fingering Suggestions</h3>
+    <p style="font-size:0.85em; opacity:0.8; margin:4px 0 12px 0;">
+      Find comfortable fingerings for block chords based on your captured handprints.
+    </p>
+
+    <label>Chord Notes
+      <div style="margin-top:8px;">
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; font-size:0.85em;">
+          <label style="display:flex; align-items:center; padding:4px; background:#eee; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="0" style="margin-right:4px;">
+            <span>C</span>
+          </label>
+          <label style="display:flex; align-items:center; padding:4px; background:#ddd; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="1" style="margin-right:4px;">
+            <span>C#</span>
+          </label>
+          <label style="display:flex; align-items:center; padding:4px; background:#eee; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="2" style="margin-right:4px;">
+            <span>D</span>
+          </label>
+          <label style="display:flex; align-items:center; padding:4px; background:#ddd; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="3" style="margin-right:4px;">
+            <span>D#</span>
+          </label>
+          <label style="display:flex; align-items:center; padding:4px; background:#eee; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="4" style="margin-right:4px;">
+            <span>E</span>
+          </label>
+          <label style="display:flex; align-items:center; padding:4px; background:#eee; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="5" style="margin-right:4px;">
+            <span>F</span>
+          </label>
+          <label style="display:flex; align-items:center; padding:4px; background:#ddd; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="6" style="margin-right:4px;">
+            <span>F#</span>
+          </label>
+          <label style="display:flex; align-items:center; padding:4px; background:#eee; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="7" style="margin-right:4px;">
+            <span>G</span>
+          </label>
+          <label style="display:flex; align-items:center; padding:4px; background:#ddd; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="8" style="margin-right:4px;">
+            <span>G#</span>
+          </label>
+          <label style="display:flex; align-items:center; padding:4px; background:#eee; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="9" style="margin-right:4px;">
+            <span>A</span>
+          </label>
+          <label style="display:flex; align-items:center; padding:4px; background:#ddd; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="10" style="margin-right:4px;">
+            <span>A#</span>
+          </label>
+          <label style="display:flex; align-items:center; padding:4px; background:#eee; border-radius:3px; cursor:pointer;">
+            <input type="checkbox" name="chordNote" value="11" style="margin-right:4px;">
+            <span>B</span>
+          </label>
+        </div>
+      </div>
+    </label>
+
+    <div style="margin-top:12px; display:flex; gap:8px;">
+      <button id="clearChordNotes" style="flex:1; background:#666;">Clear</button>
+      <button id="findChordFingerings" style="flex:2; background:#446; font-weight:bold;">Find Fingerings</button>
+    </div>
+
+    <div id="chordSuggestionsStatus" style="margin-top:8px;"></div>
+
+    <div id="chordSuggestions" style="margin-top:12px; display:none;">
+      <h4 style="font-size:0.9em; margin:8px 0 4px 0;">Suggested Fingerings</h4>
+      <div id="suggestionsList" style="font-size:0.85em;">
+        <!-- Suggestions will be populated here -->
+      </div>
     </div>
 
     <div class="sep"></div>

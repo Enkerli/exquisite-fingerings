@@ -10,6 +10,8 @@ import { getPitchClasses, parseCustomPitchClasses, PITCH_CLASS_SETS } from './co
 import { getRowCol, getPadIndex, setGridMode } from './core/grid.js';
 import { savePattern, loadPattern, deletePattern, getPatternNames, saveSettings, loadSettings } from './utils/storage.js';
 import { debugLog } from './utils/debug.js';
+import { findChordFingerings } from './analysis/chord-matcher.js';
+import { rankFingerings } from './analysis/fingering-scorer.js';
 
 /**
  * Main App class
@@ -244,6 +246,18 @@ class ExquisFingerings {
     // Clear handprints
     document.getElementById('clearHandprints')?.addEventListener('click', () => {
       this.clearAllHandprints();
+    });
+
+    // Chord suggestion - Clear notes
+    document.getElementById('clearChordNotes')?.addEventListener('click', () => {
+      document.querySelectorAll('input[name="chordNote"]').forEach(checkbox => {
+        checkbox.checked = false;
+      });
+    });
+
+    // Chord suggestion - Find fingerings
+    document.getElementById('findChordFingerings')?.addEventListener('click', () => {
+      this.findChordFingeringSuggestions();
     });
 
     // Fingering type
@@ -1237,6 +1251,170 @@ class ExquisFingerings {
     URL.revokeObjectURL(url);
 
     alert(`Exported ${this.savedHandprints.length} handprint(s) to JSON file.`);
+  }
+
+  /**
+   * Find chord fingering suggestions based on selected notes
+   */
+  findChordFingeringSuggestions() {
+    // Get selected chord notes
+    const selectedNotes = [];
+    document.querySelectorAll('input[name="chordNote"]:checked').forEach(checkbox => {
+      selectedNotes.push(parseInt(checkbox.value));
+    });
+
+    // Validate input
+    if (selectedNotes.length < 3) {
+      const statusEl = document.getElementById('chordSuggestionsStatus');
+      statusEl.innerHTML = `
+        <div class="warning-box" style="margin-top:8px;">
+          Please select at least 3 notes for a chord.
+        </div>
+      `;
+      return;
+    }
+
+    if (selectedNotes.length > 5) {
+      const statusEl = document.getElementById('chordSuggestionsStatus');
+      statusEl.innerHTML = `
+        <div class="warning-box" style="margin-top:8px;">
+          Please select no more than 5 notes for block chords.
+        </div>
+      `;
+      return;
+    }
+
+    // Check if we have handprints
+    if (this.savedHandprints.length === 0) {
+      const statusEl = document.getElementById('chordSuggestionsStatus');
+      statusEl.innerHTML = `
+        <div class="warning-box" style="margin-top:8px;">
+          No handprints available. Please capture some handprints first.
+        </div>
+      `;
+      return;
+    }
+
+    // Find matching fingerings
+    const matches = findChordFingerings(
+      selectedNotes,
+      this.savedHandprints,
+      this.settings.baseMidi
+    );
+
+    if (matches.length === 0) {
+      const statusEl = document.getElementById('chordSuggestionsStatus');
+      statusEl.innerHTML = `
+        <div class="info-box" style="margin-top:8px;">
+          No matching fingerings found in your handprints.
+          Try capturing more handprint positions.
+        </div>
+      `;
+      document.getElementById('chordSuggestions').style.display = 'none';
+      return;
+    }
+
+    // Rank by score
+    const ranked = rankFingerings(matches);
+
+    // Display suggestions
+    this.displayChordSuggestions(ranked, selectedNotes);
+  }
+
+  /**
+   * Display chord fingering suggestions
+   */
+  displayChordSuggestions(fingerings, targetNotes) {
+    const statusEl = document.getElementById('chordSuggestionsStatus');
+    const suggestionsEl = document.getElementById('chordSuggestions');
+    const listEl = document.getElementById('suggestionsList');
+
+    // Show success message
+    statusEl.innerHTML = `
+      <div class="success-box" style="margin-top:8px;">
+        Found ${fingerings.length} matching fingering${fingerings.length > 1 ? 's' : ''}!
+      </div>
+    `;
+
+    // Show top 5 suggestions
+    const topSuggestions = fingerings.slice(0, 5);
+
+    listEl.innerHTML = topSuggestions.map((fingering, index) => {
+      const fingerList = fingering.positions
+        .sort((a, b) => a.finger - b.finger)
+        .map(p => `F${p.finger}`)
+        .join('-');
+
+      const noteList = [...new Set(fingering.positions.map(p => p.pitchClass))]
+        .sort((a, b) => a - b)
+        .map(pc => ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][pc])
+        .join('-');
+
+      return `
+        <div class="suggestion-item" style="
+          background: ${index === 0 ? '#eef' : '#f5f5f5'};
+          border: 2px solid ${index === 0 ? '#6aa5ff' : '#ddd'};
+          border-radius: 6px;
+          padding: 12px;
+          margin-bottom: 8px;
+          cursor: pointer;
+        " data-suggestion-index="${index}">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong style="color:#446; font-size:1.1em;">#${index + 1} ${noteList}</strong>
+            <span style="background:#446; color:#fff; padding:4px 8px; border-radius:12px; font-size:0.9em; font-weight:bold;">
+              ${fingering.score}
+            </span>
+          </div>
+          <div style="font-size:0.85em; opacity:0.8; margin-bottom:4px;">
+            Fingers: ${fingerList} (${fingering.hand} hand)
+          </div>
+          <div style="display:flex; gap:8px; font-size:0.75em; opacity:0.7;">
+            <span title="Comfort">💆 ${fingering.comfortScore}</span>
+            <span title="Geometry">📐 ${fingering.geometricScore}</span>
+            <span title="Ergonomics">✋ ${fingering.ergonomicScore}</span>
+          </div>
+          ${index === 0 ? '<div style="margin-top:8px; font-size:0.85em; color:#446;">⭐ Best match - Click to view on grid</div>' : ''}
+        </div>
+      `;
+    }).join('');
+
+    // Add click handlers
+    listEl.querySelectorAll('.suggestion-item').forEach((item, index) => {
+      item.addEventListener('click', () => {
+        this.showSuggestionOnGrid(topSuggestions[index]);
+      });
+    });
+
+    suggestionsEl.style.display = 'block';
+  }
+
+  /**
+   * Show a fingering suggestion on the grid
+   */
+  showSuggestionOnGrid(fingering) {
+    // Create a temporary fingering pattern
+    const pattern = new FingeringPattern('chord_suggestion');
+
+    fingering.positions.forEach(pos => {
+      pattern.setFingering(pos.row, pos.col, fingering.hand, pos.finger);
+    });
+
+    // Update current pattern and render
+    this.currentPattern = pattern;
+    this.render();
+
+    // Highlight the notes
+    const pitchClasses = new Set(fingering.positions.map(p => p.pitchClass));
+    this.gridRenderer.setHighlightedPCs(pitchClasses);
+    this.gridRenderer.render();
+
+    // Show feedback
+    const statusEl = document.getElementById('chordSuggestionsStatus');
+    statusEl.innerHTML = `
+      <div class="success-box" style="margin-top:8px;">
+        ✓ Showing suggestion on grid. Click "Find Fingerings" to see other options.
+      </div>
+    `;
   }
 }
 
