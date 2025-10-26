@@ -4,6 +4,7 @@
  */
 
 import { debugLog, errorLog, warnLog } from '../utils/debug.js';
+import { ExquisDevMode } from './exquis-devmode.js';
 
 /**
  * MIDI Manager class
@@ -18,6 +19,7 @@ export class MIDIManager {
     this.holdDuration = 1000; // Default hold duration in ms
     this.octaveRange = 0; // ±octaves to send
     this.isHolding = false; // For continuous hold mode
+    this.devMode = null; // ExquisDevMode instance
   }
 
   /**
@@ -66,9 +68,24 @@ export class MIDIManager {
     const output = this.midiAccess.outputs.get(deviceId);
     if (output) {
       this.selectedOutput = output;
+      // Re-initialize dev mode with new output
+      if (this.devMode) {
+        this.devMode.output = output;
+      }
       return true;
     }
     return false;
+  }
+
+  /**
+   * Get or create Exquis Developer Mode instance
+   * @returns {ExquisDevMode} Dev mode instance
+   */
+  getDevMode() {
+    if (!this.devMode) {
+      this.devMode = new ExquisDevMode(this.selectedOutput);
+    }
+    return this.devMode;
   }
 
   /**
@@ -272,6 +289,11 @@ export class MIDIManager {
                   'Note/Data1:', note,
                   'Velocity/Data2:', velocity,
                   'Type:', messageType.toString(16).padStart(2, '0').toUpperCase());
+
+      // Pass message to dev mode handler
+      if (this.devMode) {
+        this.devMode.handleMidiMessage(message.data);
+      }
     }
 
     // In Developer Mode, listen on channel 16 (index 15) for pad IDs
