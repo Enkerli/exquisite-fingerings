@@ -13,6 +13,7 @@ import {
   getMidiNote
 } from '../core/grid.js';
 import { midiToPitchClass } from '../core/music.js';
+import { debugLog } from '../utils/debug.js';
 
 /**
  * Grid Renderer class
@@ -90,7 +91,7 @@ export class GridRenderer {
    * Render the complete grid
    */
   render() {
-    console.log('[GridRenderer] render() called', {
+    debugLog('grid', '[GridRenderer] render() called', {
       svg: this.svg,
       orientation: this.orientation,
       labelMode: this.labelMode
@@ -120,9 +121,9 @@ export class GridRenderer {
       }
     }
 
-    console.log(`[GridRenderer] Rendered ${padCount} pads`);
+    debugLog('grid', `[GridRenderer] Rendered ${padCount} pads`);
     this.svg.appendChild(gNode);
-    console.log('[GridRenderer] Grid appended to SVG');
+    debugLog('grid', '[GridRenderer] Grid appended to SVG');
   }
 
   /**

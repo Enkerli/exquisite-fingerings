@@ -3,6 +3,8 @@
  * Handles WebMIDI communication with external devices (e.g., Exquis controller)
  */
 
+import { debugLog, errorLog, warnLog } from '../utils/debug.js';
+
 /**
  * MIDI Manager class
  * Handles WebMIDI access, device selection, and note output
@@ -28,16 +30,16 @@ export class MIDIManager {
     }
 
     try {
-      console.log('[MIDI] Requesting MIDI access with SysEx permission...');
+      debugLog('midi', '[MIDI] Requesting MIDI access with SysEx permission...');
       // Request SysEx permission for Developer Mode functionality
       this.midiAccess = await navigator.requestMIDIAccess({ sysex: true });
-      console.log('[MIDI] ✓ MIDI access granted with SysEx support');
+      debugLog('midi', '[MIDI] ✓ MIDI access granted with SysEx support');
       this.midiAccess.onstatechange = () => {
         this._onDeviceStateChange();
       };
       return true;
     } catch (err) {
-      console.error('[MIDI] ✗ MIDI initialization failed:', err);
+      errorLog('[MIDI] ✗ MIDI initialization failed:', err);
       throw new Error(`MIDI initialization failed: ${err.message}`);
     }
   }
@@ -263,9 +265,9 @@ export class MIDIManager {
     const messageType = status & 0xF0;
     const channel = status & 0x0F;
 
-    // Log ALL incoming MIDI messages when in Developer Mode
+    // Log ALL incoming MIDI messages when in Developer Mode (if debug enabled)
     if (this.devModeActive) {
-      console.log('[MIDI IN] Status:', status.toString(16).padStart(2, '0').toUpperCase(),
+      debugLog('midi', '[MIDI IN] Status:', status.toString(16).padStart(2, '0').toUpperCase(),
                   'Channel:', channel,
                   'Note/Data1:', note,
                   'Velocity/Data2:', velocity,
@@ -274,12 +276,12 @@ export class MIDIManager {
 
     // In Developer Mode, listen on channel 16 (index 15) for pad IDs
     if (this.devModeActive && channel === 15) {
-      console.log('[DEV MODE] Channel 16 message detected! Pad ID:', note, 'Velocity:', velocity);
+      debugLog('midi', '[DEV MODE] Channel 16 message detected! Pad ID:', note, 'Velocity:', velocity);
       // Developer Mode: 9F [pad 0-60] 7F (press), 8F [pad 0-60] 00 (release)
       if (messageType === 0x90 || messageType === 0x80) {
         const actualVelocity = messageType === 0x80 ? 0 : velocity;
         const padID = note; // In dev mode, note IS the pad ID (0-60)
-        console.log('[DEV MODE] Triggering handler with pad ID:', padID, 'velocity:', actualVelocity);
+        debugLog('midi', '[DEV MODE] Triggering handler with pad ID:', padID, 'velocity:', actualVelocity);
         if (this.noteHandler) {
           this.noteHandler(padID, actualVelocity);
         }
@@ -293,7 +295,7 @@ export class MIDIManager {
     // Channel Pressure (0xD0), Pitch Bend (0xE0)
     if (messageType === 0x90 || messageType === 0x80) {
       const actualVelocity = messageType === 0x80 ? 0 : velocity;
-      console.log('[NORMAL MODE] Note event - Note:', note, 'Velocity:', actualVelocity);
+      debugLog('midi', '[NORMAL MODE] Note event - Note:', note, 'Velocity:', actualVelocity);
       // Only trigger handler for actual note events (velocity > 0 for Note On)
       if (this.noteHandler) {
         this.noteHandler(note, actualVelocity);
@@ -308,18 +310,18 @@ export class MIDIManager {
    */
   sendSysEx(data) {
     if (!this.selectedOutput) {
-      console.warn('[SYSEX] ⚠️ No MIDI output device selected - cannot send SysEx');
+      warnLog('[SYSEX] ⚠️ No MIDI output device selected - cannot send SysEx');
       return;
     }
 
     const hexString = data.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
-    console.log(`[SYSEX] Sending to ${this.selectedOutput.name}:`, hexString);
+    debugLog('midi', `[SYSEX] Sending to ${this.selectedOutput.name}:`, hexString);
 
     try {
       this.selectedOutput.send(data);
-      console.log('[SYSEX] ✓ Sent successfully');
+      debugLog('midi', '[SYSEX] ✓ Sent successfully');
     } catch (err) {
-      console.error('[SYSEX] ✗ Send error:', err);
+      errorLog('[SYSEX] ✗ Send error:', err);
     }
   }
 
@@ -328,10 +330,10 @@ export class MIDIManager {
    * Sends: F0 00 21 7E 7F 00 01 F7
    */
   enterExquisDeveloperMode() {
-    console.log('[DEV MODE] 🔧 Entering Exquis Developer Mode...');
+    debugLog('midi', '[DEV MODE] 🔧 Entering Exquis Developer Mode...');
     const sysex = [0xF0, 0x00, 0x21, 0x7E, 0x7F, 0x00, 0x01, 0xF7];
     this.sendSysEx(sysex);
-    console.log('[DEV MODE] ✓ Developer Mode command sent (pads should now send pad IDs on channel 16)');
+    debugLog('midi', '[DEV MODE] ✓ Developer Mode command sent (pads should now send pad IDs on channel 16)');
   }
 
   /**
@@ -339,10 +341,10 @@ export class MIDIManager {
    * Sends: F0 00 21 7E 7F 00 00 F7
    */
   exitExquisDeveloperMode() {
-    console.log('[DEV MODE] 🔧 Exiting Exquis Developer Mode...');
+    debugLog('midi', '[DEV MODE] 🔧 Exiting Exquis Developer Mode...');
     const sysex = [0xF0, 0x00, 0x21, 0x7E, 0x7F, 0x00, 0x00, 0xF7];
     this.sendSysEx(sysex);
-    console.log('[DEV MODE] ✓ Exit command sent (pads should return to normal mode)');
+    debugLog('midi', '[DEV MODE] ✓ Exit command sent (pads should return to normal mode)');
   }
 
   /**

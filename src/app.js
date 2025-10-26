@@ -9,17 +9,18 @@ import { FingeringPattern, ergoAnalyzer } from './core/fingering.js';
 import { getPitchClasses, parseCustomPitchClasses, PITCH_CLASS_SETS } from './core/music.js';
 import { getRowCol, getPadIndex, setGridMode } from './core/grid.js';
 import { savePattern, loadPattern, deletePattern, getPatternNames, saveSettings, loadSettings } from './utils/storage.js';
+import { debugLog } from './utils/debug.js';
 
 /**
  * Main App class
  */
 class ExquisFingerings {
   constructor() {
-    console.log('[APP] Constructor started');
+    debugLog('app', '[APP] Constructor started');
 
     // Ensure grid starts in intervals mode FIRST (before any grid calculations)
     setGridMode('intervals');
-    console.log('[APP] Grid mode set to intervals');
+    debugLog('app', '[APP] Grid mode set to intervals');
 
     // State
     this.settings = loadSettings();
@@ -40,9 +41,9 @@ class ExquisFingerings {
 
     // UI Elements
     this.gridElement = document.getElementById('grid');
-    console.log('[APP] Grid element:', this.gridElement);
+    debugLog('app', '[APP] Grid element:', this.gridElement);
     this.gridRenderer = new GridRenderer(this.gridElement);
-    console.log('[APP] GridRenderer created');
+    debugLog('app', '[APP] GridRenderer created');
 
     // Initialize
     this.initUI();
@@ -51,9 +52,9 @@ class ExquisFingerings {
     this.updateHandprintList();
 
     // Initial render to ensure grid displays immediately
-    console.log('[APP] About to call initial render()');
+    debugLog('app', '[APP] About to call initial render()');
     this.render();
-    console.log('[APP] Constructor completed');
+    debugLog('app', '[APP] Constructor completed');
   }
 
   /**
@@ -311,7 +312,7 @@ class ExquisFingerings {
    * Render the grid
    */
   render() {
-    console.log('[APP] render() called');
+    debugLog('app', '[APP] render() called');
     this.gridRenderer.setOrientation(this.settings.orientation);
     this.gridRenderer.setLabelMode(this.settings.labelMode);
     this.gridRenderer.setBaseMidi(this.settings.baseMidi);
@@ -341,7 +342,7 @@ class ExquisFingerings {
 
     this.gridRenderer.setFingeringMode(this.fingeringMode || this.handprintMode);
     this.gridRenderer.render();
-    console.log('[APP] render() completed');
+    debugLog('app', '[APP] render() completed');
   }
 
   /**
@@ -901,7 +902,7 @@ class ExquisFingerings {
       this.handprintSessionPadOffset = padID;
       this.handprintCaptureState = 'capturing_fingers';
 
-      console.log(`Developer Mode calibrated: pad 0,0 has ID ${padID}`);
+      debugLog('handprint', `[HANDPRINT] Developer Mode calibrated: pad 0,0 has ID ${padID}`);
 
       const statusEl = document.getElementById('handprintCaptureStatus');
       if (statusEl) {
