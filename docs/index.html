@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Exquisite Fingerings - Exquis Controller Explorer</title>
   <meta name="description" content="Interactive fingering explorer for Intuitive Instruments Exquis hex grid controller" />
-  <script type="module" crossorigin src="./assets/main-CVBxljgM.js"></script>
+  <script type="module" crossorigin src="./assets/main-BqpLqz_M.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/main-B4MmznKD.css">
 </head>
 <body>
@@ -37,18 +37,20 @@
 
       <div id="handprintCaptureStatus" style="margin-top:8px;"></div>
 
-      <div id="savedHandprints" style="margin-top:12px;">
-        <h4 style="font-size:0.9em; margin:8px 0 4px 0;">Saved Handprints</h4>
-        <div id="handprintList" style="font-size:0.85em; opacity:0.7;">
-          No handprints captured yet.
+      <details style="margin-top:12px;">
+        <summary><h4 style="font-size:0.9em; margin:0;">Saved Handprints</h4></summary>
+        <div id="savedHandprints" style="margin-top:8px;">
+          <div id="handprintList" style="font-size:0.85em; opacity:0.7;">
+            No handprints captured yet.
+          </div>
+          <button id="exportHandprints" style="width:100%; margin-top:8px; display:none;">
+            Export All Handprints
+          </button>
+          <button id="clearHandprints" class="danger" style="width:100%; margin-top:4px; display:none;">
+            Clear All Handprints
+          </button>
         </div>
-        <button id="exportHandprints" style="width:100%; margin-top:8px; display:none;">
-          Export All Handprints
-        </button>
-        <button id="clearHandprints" class="danger" style="width:100%; margin-top:4px; display:none;">
-          Clear All Handprints
-        </button>
-      </div>
+      </details>
     </details>
 
     <div class="sep"></div>

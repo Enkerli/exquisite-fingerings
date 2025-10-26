@@ -59,28 +59,31 @@ export function findChordFingerings(targetPitchClasses, handprints, baseMidi = 4
       // Calculate pitch classes for this subset
       // IMPORTANT: Recalculate padIndex from (row, col) in intervals mode
       // Don't use stored padIndex (which was captured in chromatic mode)
+      // Use handprint's own baseMidi for correct pitch class calculation
+      const handprintBaseMidi = handprint.baseMidi || baseMidi;
       const pitchClasses = subset.map(pos => {
         const padIndex = getPadIndex(pos.row, pos.col); // Recalculate in current grid mode
-        const midiNote = baseMidi + padIndex;
+        const midiNote = handprintBaseMidi + padIndex;
         return midiToPitchClass(midiNote);
       });
 
-      // Check if pitch classes match target chord (exact match)
+      // Check if pitch classes match target chord (subset match)
+      // All target chord notes must be present (handprint can have extra notes)
       const pitchSet = new Set(pitchClasses);
 
-      if (pitchSet.size === targetSet.size &&
-          [...pitchSet].every(pc => targetSet.has(pc))) {
+      if ([...targetSet].every(pc => pitchSet.has(pc)) &&
+          pitchSet.size >= targetSet.size) {
         // Found a match! Create fingering object
         const fingering = {
           handprintId: handprint.id,
           hand: handprint.hand,
           comfortRating: handprint.comfortRating || 50,
-          baseMidi: handprint.baseMidi || baseMidi,
+          baseMidi: handprintBaseMidi,
           midiDevice: handprint.midiDevice,
           capturedAt: handprint.capturedAt,
           positions: subset.map(pos => {
             const padIndex = getPadIndex(pos.row, pos.col); // Recalculate in intervals mode
-            const midiNote = baseMidi + padIndex;
+            const midiNote = handprintBaseMidi + padIndex;
             return {
               row: pos.row,
               col: pos.col,

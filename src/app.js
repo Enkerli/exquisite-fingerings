@@ -412,7 +412,7 @@ class ExquisFingerings {
     const highlightedPads = [];
     for (let row = 0; row < 11; row++) {
       for (let col = 0; col < (row % 2 === 0 ? 6 : 5); col++) {
-        const padIndex = row === 0 ? col : (row % 2 === 1 ? 4 : 3) * row + col;
+        const padIndex = getPadIndex(row, col); // Use correct grid calculation
         const midiNote = this.settings.baseMidi + padIndex;
         const pc = midiNote % 12;
         if (pcs.has(pc)) {

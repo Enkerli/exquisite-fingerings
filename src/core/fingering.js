@@ -3,7 +3,7 @@
  * Handles fingering assignment, storage, and ergonomic analysis
  */
 
-import { getGridDistance, getNeighbors, getRowLength } from './grid.js';
+import { getGridDistance, getNeighbors, getRowLength, getPadIndex } from './grid.js';
 
 /**
  * Fingering class representing a complete fingering pattern
@@ -229,7 +229,7 @@ export class ErgoAnalyzer {
 
     pads.forEach(pad => {
       // Calculate MIDI note for this pad
-      const padIndex = pad.row === 0 ? pad.col : (pad.row % 2 === 1 ? 4 : 3) * pad.row + pad.col;
+      const padIndex = getPadIndex(pad.row, pad.col); // Use correct grid calculation
       const midiNote = baseMidi + padIndex;
       const pc = midiNote % 12;
 
