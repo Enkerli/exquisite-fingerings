@@ -46,6 +46,8 @@ class ExquisFingerings {
     this.currentSuggestions = [];  // Array of synthesized suggestions
     this.currentSuggestionIndex = 0;  // Current suggestion being displayed
     this.currentSuggestionRating = 3;  // User rating for current suggestion
+    this.suggestionEditMode = false;  // Whether we're editing the current suggestion
+    this.editingPad = null;  // Which pad is being edited {row, col}
 
     // UI Elements
     this.gridElement = document.getElementById('grid');
@@ -310,6 +312,8 @@ class ExquisFingerings {
     this.gridRenderer.setPadClickHandler((row, col, midiNote, pc) => {
       if (this.handprintMode) {
         this.handleHandprintClick(row, col);
+      } else if (this.suggestionEditMode) {
+        this.handleSuggestionEditClick(row, col);
       } else if (this.fingeringMode) {
         this.handleFingeringClick(row, col);
       } else {
@@ -1533,8 +1537,20 @@ class ExquisFingerings {
 
     const fingerList = suggestion.positions
       .sort((a, b) => a.finger - b.finger)
-      .map(p => `Finger ${p.finger}: r${p.row}c${p.col}`)
-      .join('<br>');
+      .map(p => {
+        const padKey = `${p.row},${p.col}`;
+        return `
+          <div style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+            <span style="font-weight:bold;">Finger ${p.finger}:</span>
+            <span>r${p.row}c${p.col}</span>
+            <button class="change-finger-btn" data-row="${p.row}" data-col="${p.col}" data-current-finger="${p.finger}"
+              style="padding:2px 8px; background:#446; color:#fff; border:none; border-radius:3px; cursor:pointer; font-size:0.8em;">
+              Change
+            </button>
+          </div>
+        `;
+      })
+      .join('');
 
     displayEl.innerHTML = `
       <div style="margin-bottom:8px;">
@@ -1548,6 +1564,17 @@ class ExquisFingerings {
         • Score: ${Math.round(suggestion.score)}
       </div>
     `;
+
+    // Add click handlers for change buttons
+    displayEl.querySelectorAll('.change-finger-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const row = parseInt(btn.dataset.row);
+        const col = parseInt(btn.dataset.col);
+        const currentFinger = parseInt(btn.dataset.currentFinger);
+        this.showFingerSelector(row, col, currentFinger);
+      });
+    });
 
     // Show the suggestion UI
     document.getElementById('currentSuggestion').style.display = 'block';
@@ -1610,6 +1637,119 @@ class ExquisFingerings {
 
     // Show feedback
     alert(`Saved as "${patternName}" with comfort rating ${this.currentSuggestionRating}/5`);
+  }
+
+  /**
+   * Show finger selector dialog for a pad
+   */
+  showFingerSelector(row, col, currentFinger) {
+    // Get all fingers used in current suggestion
+    const suggestion = this.currentSuggestions[this.currentSuggestionIndex];
+    const usedFingers = new Set(suggestion.positions.map(p => p.finger));
+
+    // Remove current finger from used set (since we're changing it)
+    usedFingers.delete(currentFinger);
+
+    // Create finger selector buttons
+    const buttons = [];
+    for (let f = 1; f <= 5; f++) {
+      const isUsed = usedFingers.has(f);
+      const isCurrent = f === currentFinger;
+      const label = isCurrent ? `${f} (current)` : isUsed ? `${f} (used)` : `${f}`;
+      const disabled = isUsed ? 'disabled' : '';
+      const style = isCurrent ? 'background:#6aa5ff;' : isUsed ? 'opacity:0.3;' : '';
+
+      buttons.push(`
+        <button onclick="window.app.changeSuggestionFinger(${row}, ${col}, ${f})"
+          ${disabled}
+          style="padding:12px 20px; margin:4px; font-size:1.2em; cursor:pointer; border:2px solid #446; border-radius:4px; ${style}">
+          ${label}
+        </button>
+      `);
+    }
+
+    // Show modal dialog
+    const modal = document.createElement('div');
+    modal.id = 'fingerSelectorModal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    `;
+
+    modal.innerHTML = `
+      <div style="background:#fff; padding:24px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.3); max-width:400px;">
+        <h3 style="margin:0 0 16px 0; color:#446;">Select Finger for r${row}c${col}</h3>
+        <div style="display:flex; flex-wrap:wrap; justify-content:center;">
+          ${buttons.join('')}
+        </div>
+        <button onclick="document.getElementById('fingerSelectorModal').remove()"
+          style="width:100%; margin-top:16px; padding:8px; background:#666; color:#fff; border:none; border-radius:4px; cursor:pointer;">
+          Cancel
+        </button>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close on outside click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+  }
+
+  /**
+   * Change finger assignment for a pad in current suggestion
+   */
+  changeSuggestionFinger(row, col, newFinger) {
+    if (this.currentSuggestions.length === 0) return;
+
+    const suggestion = this.currentSuggestions[this.currentSuggestionIndex];
+
+    // Find the position to update
+    const posIndex = suggestion.positions.findIndex(p => p.row === row && p.col === col);
+    if (posIndex === -1) return;
+
+    // Check if new finger is already used
+    const fingerUsed = suggestion.positions.some((p, i) => i !== posIndex && p.finger === newFinger);
+    if (fingerUsed) {
+      alert(`Finger ${newFinger} is already assigned to another pad. Please choose a different finger.`);
+      return;
+    }
+
+    // Update the finger
+    suggestion.positions[posIndex].finger = newFinger;
+
+    // Close modal
+    document.getElementById('fingerSelectorModal')?.remove();
+
+    // Refresh display
+    this.displayCurrentSuggestion();
+  }
+
+  /**
+   * Handle suggestion edit click (not currently used, but kept for potential alternative approach)
+   */
+  handleSuggestionEditClick(row, col) {
+    // This could be used for a click-on-grid editing mode
+    // Currently we use the Change buttons instead
+    if (this.currentSuggestions.length === 0) return;
+
+    const suggestion = this.currentSuggestions[this.currentSuggestionIndex];
+    const pos = suggestion.positions.find(p => p.row === row && p.col === col);
+
+    if (pos) {
+      this.showFingerSelector(row, col, pos.finger);
+    }
   }
 }
 

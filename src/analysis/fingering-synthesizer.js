@@ -73,6 +73,11 @@ function findPadCombinations(targetPitchClasses, baseMidi = 48, maxRow = 5) {
 function assignFingers(pads, hand, patterns = null) {
   if (pads.length === 0) return [];
 
+  // Can't assign more than 5 fingers
+  if (pads.length > 5) {
+    pads = pads.slice(0, 5);
+  }
+
   // Sort pads by position for consistent finger assignment
   // Right hand: thumb (1) at lower-left, extending up-right
   // Left hand: thumb (1) at lower-right, extending up-left
@@ -81,25 +86,46 @@ function assignFingers(pads, hand, patterns = null) {
     return hand === 'right' ? a.col - b.col : b.col - a.col;
   });
 
-  // Assign fingers sequentially
-  return sortedPads.map((pad, index) => {
-    // Try to use pattern-based suggestion if available
+  // Track which fingers have been assigned
+  const usedFingers = new Set();
+  const assignments = [];
+
+  // Assign fingers sequentially, ensuring no duplicates
+  for (let index = 0; index < sortedPads.length; index++) {
+    const pad = sortedPads[index];
     let finger = null;
+
+    // Try to use pattern-based suggestion if available
     if (patterns) {
-      finger = suggestFingerForPosition(pad.row, pad.col, patterns);
+      const suggestedFinger = suggestFingerForPosition(pad.row, pad.col, patterns);
+      // Only use suggestion if finger hasn't been used yet
+      if (suggestedFinger && !usedFingers.has(suggestedFinger)) {
+        finger = suggestedFinger;
+      }
     }
 
-    // Fall back to sequential assignment
+    // Fall back to sequential assignment, skipping already-used fingers
     if (!finger) {
-      finger = Math.min(index + 1, 5);
+      for (let f = 1; f <= 5; f++) {
+        if (!usedFingers.has(f)) {
+          finger = f;
+          break;
+        }
+      }
     }
 
-    return {
-      ...pad,
-      finger,
-      hand
-    };
-  });
+    // Mark finger as used
+    if (finger) {
+      usedFingers.add(finger);
+      assignments.push({
+        ...pad,
+        finger,
+        hand
+      });
+    }
+  }
+
+  return assignments;
 }
 
 /**
