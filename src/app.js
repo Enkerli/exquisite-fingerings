@@ -15,6 +15,9 @@ import { savePattern, loadPattern, deletePattern, getPatternNames, saveSettings,
  */
 class ExquisFingerings {
   constructor() {
+    // Ensure grid starts in intervals mode FIRST (before any grid calculations)
+    setGridMode('intervals');
+
     // State
     this.settings = loadSettings();
     this.currentPattern = new FingeringPattern();
@@ -36,14 +39,13 @@ class ExquisFingerings {
     this.gridElement = document.getElementById('grid');
     this.gridRenderer = new GridRenderer(this.gridElement);
 
-    // Ensure grid starts in intervals mode
-    setGridMode('intervals');
-
     // Initialize
     this.initUI();
     this.loadStoredSettings();
     this.updatePatternMetadata();
     this.updateHandprintList();
+
+    // Initial render to ensure grid displays immediately
     this.render();
   }
 
@@ -781,9 +783,10 @@ class ExquisFingerings {
 
     // Start capture session
     this.handprintMode = true;
-    this.handprintCaptureState = 'capturing_fingers'; // Skip basenote step with Developer Mode
+    this.handprintCaptureState = 'waiting_basenote'; // Need to calibrate Developer Mode offset
     this.handprintCaptures = [];
-    this.handprintSessionBaseMidi = this.settings.baseMidi; // Use current baseMidi setting
+    this.handprintSessionBaseMidi = this.settings.baseMidi;
+    this.handprintSessionPadOffset = null; // Developer Mode pad ID offset
     this.handprintSessionID = `session_${Date.now()}`;
     this.handprintSessionCount = 0;
     this.lastHandprintNoteTime = 0;  // For debouncing
@@ -804,10 +807,11 @@ class ExquisFingerings {
     if (statusEl) {
       statusEl.innerHTML = `
         <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
-          <strong>Capture Active - ${this.handprintCaptureHand.toUpperCase()} hand</strong><br/>
-          <strong style="color:#6f6;">Press 5 fingers in order 👍 1 → 2 → 3 → 4 → 5 🤙</strong>
+          <strong>Calibration - ${this.handprintCaptureHand.toUpperCase()} hand</strong><br/>
+          <strong style="color:#6f6;">Press bottom-left pad (0,0) to calibrate</strong><br/>
+          <span style="font-size:0.85em; opacity:0.7;">This sets the reference point for your handprint</span>
           <div style="margin-top:8px; font-size:1.2em; color:#6af;">
-            <strong id="handprintCounter">Captured: 0/5</strong>
+            <strong id="handprintCounter">Waiting for calibration...</strong>
           </div>
         </div>
       `;
@@ -879,25 +883,52 @@ class ExquisFingerings {
    * Handle pad ID from Developer Mode (0-60)
    */
   handleHandprintPadID(padID) {
-    if (this.handprintCaptureState !== 'capturing_fingers') return;
-    if (this.handprintCaptures.length >= 5) return;
+    // Calibration step: establish offset
+    if (this.handprintCaptureState === 'waiting_basenote') {
+      // User pressed pad 0,0 - record the offset
+      this.handprintSessionPadOffset = padID;
+      this.handprintCaptureState = 'capturing_fingers';
 
-    // Check if this pad ID has already been captured
-    if (this.handprintCaptures.some(cap => cap.padIndex === padID)) {
-      console.log('Ignoring duplicate pad ID:', padID);
+      console.log(`Developer Mode calibrated: pad 0,0 has ID ${padID}`);
+
+      const statusEl = document.getElementById('handprintCaptureStatus');
+      if (statusEl) {
+        statusEl.innerHTML = `
+          <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
+            <strong>Capture Active - ${this.handprintCaptureHand.toUpperCase()} hand</strong><br/>
+            <strong style="color:#6f6;">Press 5 fingers in order 👍 1 → 2 → 3 → 4 → 5 🤙</strong>
+            <div style="margin-top:8px; font-size:1.2em; color:#6af;">
+              <strong id="handprintCounter">Captured: 0/5</strong>
+            </div>
+          </div>
+        `;
+      }
+
+      this.render();
       return;
     }
 
-    // In chromatic mode, pad ID (0-60) IS the pad index
+    if (this.handprintCaptureState !== 'capturing_fingers') return;
+    if (this.handprintCaptures.length >= 5) return;
+
+    // Apply offset to get actual pad index
+    const actualPadIndex = padID - this.handprintSessionPadOffset;
+
+    // Check if this pad has already been captured
+    if (this.handprintCaptures.some(cap => cap.padIndex === actualPadIndex)) {
+      console.log('Ignoring duplicate pad:', actualPadIndex);
+      return;
+    }
+
     // Convert to (row, col) using chromatic grid logic
     try {
-      const { row, col } = getRowCol(padID);
-      const midiNote = this.handprintSessionBaseMidi + padID;
+      const { row, col } = getRowCol(actualPadIndex);
+      const midiNote = this.handprintSessionBaseMidi + actualPadIndex;
 
       this.handprintCaptures.push({
         row,
         col,
-        padIndex: padID,
+        padIndex: actualPadIndex,
         midiNote,
         finger: this.handprintCaptures.length + 1,
         timestamp: Date.now()
@@ -916,7 +947,7 @@ class ExquisFingerings {
         this.finishHandprintCapture();
       }
     } catch (err) {
-      console.error('Invalid pad ID:', padID, err);
+      console.error('Invalid pad index:', actualPadIndex, 'from pad ID:', padID, err);
     }
   }
 
@@ -1010,10 +1041,8 @@ class ExquisFingerings {
       });
     }
 
-    // Reset button
-    const startBtn = document.getElementById('startHandprintCapture');
-    startBtn.textContent = 'Start Capture';
-    startBtn.style.background = '';
+    // NOTE: Don't reset button here - we're still in the capture session!
+    // The button should stay "Stop Capture" until stopHandprintSession() is called.
 
     this.render();
   }
@@ -1095,7 +1124,7 @@ class ExquisFingerings {
   }
 
   /**
-   * Discard captured handprint
+   * Discard captured handprint and continue session
    */
   discardHandprint() {
     this.handprintCaptures = [];
@@ -1103,21 +1132,19 @@ class ExquisFingerings {
 
     const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
+      // Show the active capture UI again (session still active)
       statusEl.innerHTML = `
-        <div style="padding:8px; opacity:0.7;">
-          Handprint discarded. Press another pad to capture next.
+        <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
+          <strong>Capture Active - ${this.handprintCaptureHand.toUpperCase()} hand</strong><br/>
+          <strong style="color:#6f6;">Press 5 fingers in order 👍 1 → 2 → 3 → 4 → 5 🤙</strong>
+          <div style="margin-top:8px; font-size:1.2em; color:#6af;">
+            <strong id="handprintCounter">Captured: 0/5</strong>
+          </div>
+          <div style="margin-top:8px; padding-top:8px; border-top:1px solid #444; font-size:0.9em; opacity:0.7;">
+            Previous handprint discarded. Ready for next capture.
+          </div>
         </div>
       `;
-
-      setTimeout(() => {
-        statusEl.innerHTML = '';
-      }, 2000);
-    }
-
-    // Update counter for next capture
-    const counterEl = document.getElementById('handprintCounter');
-    if (counterEl) {
-      counterEl.textContent = `Captured: 0/5`;
     }
 
     this.render();
