@@ -269,13 +269,16 @@ class ExquisFingerings {
    */
   loadStoredSettings() {
     // Orientation
-    document.querySelector(`input[name="ori"][value="${this.settings.orientation}"]`).checked = true;
+    const oriRadio = document.querySelector(`input[name="ori"][value="${this.settings.orientation}"]`);
+    if (oriRadio) oriRadio.checked = true;
 
     // Label mode
-    document.querySelector(`input[name="lab"][value="${this.settings.labelMode}"]`).checked = true;
+    const labRadio = document.querySelector(`input[name="lab"][value="${this.settings.labelMode}"]`);
+    if (labRadio) labRadio.checked = true;
 
     // Base MIDI
-    document.getElementById('baseMidi').value = this.settings.baseMidi;
+    const baseMidiInput = document.getElementById('baseMidi');
+    if (baseMidiInput) baseMidiInput.value = this.settings.baseMidi;
 
     // MIDI settings
     const holdDurationSlider = document.getElementById('midiHoldDuration');

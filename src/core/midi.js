@@ -28,12 +28,16 @@ export class MIDIManager {
     }
 
     try {
-      this.midiAccess = await navigator.requestMIDIAccess();
+      console.log('[MIDI] Requesting MIDI access with SysEx permission...');
+      // Request SysEx permission for Developer Mode functionality
+      this.midiAccess = await navigator.requestMIDIAccess({ sysex: true });
+      console.log('[MIDI] ✓ MIDI access granted with SysEx support');
       this.midiAccess.onstatechange = () => {
         this._onDeviceStateChange();
       };
       return true;
     } catch (err) {
+      console.error('[MIDI] ✗ MIDI initialization failed:', err);
       throw new Error(`MIDI initialization failed: ${err.message}`);
     }
   }
