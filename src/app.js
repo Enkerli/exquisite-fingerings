@@ -12,6 +12,7 @@ import { savePattern, loadPattern, deletePattern, getPatternNames, saveSettings,
 import { debugLog } from './utils/debug.js';
 import { findChordFingerings } from './analysis/chord-matcher.js';
 import { rankFingerings } from './analysis/fingering-scorer.js';
+import { synthesizeFingerings } from './analysis/fingering-synthesizer.js';
 
 /**
  * Main App class
@@ -40,6 +41,11 @@ class ExquisFingerings {
     this.handprintSessionID = null;  // Session ID to link related handprints
     this.handprintSessionCount = 0;  // Count of handprints in current session
     this.savedHandprints = this.settings.handprints || [];  // All saved handprints
+
+    // Suggestion synthesis state
+    this.currentSuggestions = [];  // Array of synthesized suggestions
+    this.currentSuggestionIndex = 0;  // Current suggestion being displayed
+    this.currentSuggestionRating = 3;  // User rating for current suggestion
 
     // UI Elements
     this.gridElement = document.getElementById('grid');
@@ -258,6 +264,40 @@ class ExquisFingerings {
     // Chord suggestion - Find fingerings
     document.getElementById('findChordFingerings')?.addEventListener('click', () => {
       this.findChordFingeringSuggestions();
+    });
+
+    // Suggestion synthesis - Generate button
+    document.getElementById('generateSuggestion')?.addEventListener('click', () => {
+      this.generateChordSuggestion();
+    });
+
+    // Suggestion synthesis - Save button
+    document.getElementById('saveSuggestion')?.addEventListener('click', () => {
+      this.saveSuggestionAsPattern();
+    });
+
+    // Suggestion synthesis - Next button
+    document.getElementById('nextSuggestion')?.addEventListener('click', () => {
+      this.showNextSuggestion();
+    });
+
+    // Suggestion synthesis - Comfort rating
+    document.getElementById('comfortRating')?.addEventListener('input', (e) => {
+      this.currentSuggestionRating = parseInt(e.target.value);
+      document.getElementById('comfortRatingValue').textContent = e.target.value;
+    });
+
+    // Auto-suggest on key/set change
+    document.getElementById('key')?.addEventListener('change', () => {
+      if (document.getElementById('autoSuggestChords')?.checked) {
+        this.generateChordSuggestion();
+      }
+    });
+
+    document.getElementById('set')?.addEventListener('change', () => {
+      if (document.getElementById('autoSuggestChords')?.checked) {
+        this.generateChordSuggestion();
+      }
     });
 
     // Fingering type
@@ -1415,6 +1455,161 @@ class ExquisFingerings {
         ✓ Showing suggestion on grid. Click "Find Fingerings" to see other options.
       </div>
     `;
+  }
+
+  /**
+   * Generate chord fingering suggestion using synthesis
+   */
+  generateChordSuggestion() {
+    // Get target pitch classes from selected key/set
+    const pcs = this.getHighlightedPCs();
+    if (pcs.size === 0) {
+      alert('No chord selected. Please select a key and chord type first.');
+      return;
+    }
+
+    const targetPitchClasses = Array.from(pcs);
+
+    // Check if we have handprints
+    if (this.savedHandprints.length === 0) {
+      alert('No handprints available. Please capture some handprints first.');
+      return;
+    }
+
+    // Get selected hand
+    const hand = document.getElementById('suggestionHand').value;
+
+    // Generate suggestions
+    const suggestions = synthesizeFingerings(
+      targetPitchClasses,
+      this.savedHandprints,
+      this.settings.baseMidi,
+      hand,
+      10 // Generate up to 10 suggestions
+    );
+
+    if (suggestions.length === 0) {
+      alert('Could not generate suggestions for this chord. Try a different range or capture more handprints.');
+      return;
+    }
+
+    // Store suggestions
+    this.currentSuggestions = suggestions;
+    this.currentSuggestionIndex = 0;
+
+    // Display first suggestion
+    this.displayCurrentSuggestion();
+  }
+
+  /**
+   * Display the current suggestion
+   */
+  displayCurrentSuggestion() {
+    if (this.currentSuggestions.length === 0) return;
+
+    const suggestion = this.currentSuggestions[this.currentSuggestionIndex];
+
+    // Create pattern from suggestion
+    const pattern = new FingeringPattern('synthesized_suggestion');
+    suggestion.positions.forEach(pos => {
+      pattern.setFingering(pos.row, pos.col, suggestion.hand, pos.finger);
+    });
+
+    // Update current pattern and render
+    this.currentPattern = pattern;
+    this.render();
+
+    // Highlight the chord notes
+    const pitchClasses = new Set(suggestion.targetPitchClasses);
+    this.gridRenderer.setHighlightedPCs(pitchClasses);
+    this.gridRenderer.render();
+
+    // Update suggestion display
+    const displayEl = document.getElementById('suggestionDisplay');
+    const noteNames = suggestion.targetPitchClasses
+      .sort((a, b) => a - b)
+      .map(pc => ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][pc])
+      .join('-');
+
+    const fingerList = suggestion.positions
+      .sort((a, b) => a.finger - b.finger)
+      .map(p => `Finger ${p.finger}: r${p.row}c${p.col}`)
+      .join('<br>');
+
+    displayEl.innerHTML = `
+      <div style="margin-bottom:8px;">
+        <strong style="color:#446;">${noteNames}</strong> (${suggestion.hand} hand)
+      </div>
+      <div style="font-size:0.85em;">
+        ${fingerList}
+      </div>
+      <div style="margin-top:8px; font-size:0.85em; opacity:0.7;">
+        Suggestion ${this.currentSuggestionIndex + 1} of ${this.currentSuggestions.length}
+        • Score: ${Math.round(suggestion.score)}
+      </div>
+    `;
+
+    // Show the suggestion UI
+    document.getElementById('currentSuggestion').style.display = 'block';
+  }
+
+  /**
+   * Show next suggestion
+   */
+  showNextSuggestion() {
+    if (this.currentSuggestions.length === 0) return;
+
+    this.currentSuggestionIndex = (this.currentSuggestionIndex + 1) % this.currentSuggestions.length;
+    this.displayCurrentSuggestion();
+  }
+
+  /**
+   * Save current suggestion as a pattern
+   */
+  saveSuggestionAsPattern() {
+    if (this.currentSuggestions.length === 0) return;
+
+    const suggestion = this.currentSuggestions[this.currentSuggestionIndex];
+
+    // Get chord name from key/set
+    const key = document.getElementById('key').value;
+    const setType = document.getElementById('set').value;
+    const setName = document.querySelector(`#set option[value="${setType}"]`).textContent;
+    const patternName = `${key} ${setName}`;
+
+    // Create pattern
+    const pattern = new FingeringPattern(patternName);
+    suggestion.positions.forEach(pos => {
+      pattern.setFingering(pos.row, pos.col, suggestion.hand, pos.finger);
+    });
+
+    // Add metadata
+    pattern.metadata = {
+      key,
+      setType,
+      baseMidi: this.settings.baseMidi,
+      createdAt: Date.now(),
+      modifiedAt: Date.now(),
+      comfortRating: this.currentSuggestionRating,
+      synthesized: true,
+      hand: suggestion.hand
+    };
+
+    // Save pattern
+    const patternData = {
+      ...pattern.toJSON(),
+      ...pattern.metadata
+    };
+
+    const patterns = JSON.parse(localStorage.getItem('fingeringPatterns') || '{}');
+    patterns[patternName] = patternData;
+    localStorage.setItem('fingeringPatterns', JSON.stringify(patterns));
+
+    // Update pattern list
+    this.updatePatternList();
+
+    // Show feedback
+    alert(`Saved as "${patternName}" with comfort rating ${this.currentSuggestionRating}/5`);
   }
 }
 
