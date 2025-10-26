@@ -748,6 +748,11 @@ class ExquisFingerings {
       return;
     }
 
+    // Change button immediately to show we're starting
+    const startBtn = document.getElementById('startHandprintCapture');
+    startBtn.textContent = 'Stop Capture';
+    startBtn.style.background = '#c44';
+
     // Auto-enable MIDI if not enabled
     if (!midiManager.getStatus().isInitialized) {
       try {
@@ -814,11 +819,6 @@ class ExquisFingerings {
         }
       }
     });
-
-    // Change button to Stop Capture
-    const startBtn = document.getElementById('startHandprintCapture');
-    startBtn.textContent = 'Stop Capture';
-    startBtn.style.background = '#c44';
   }
 
   /**
@@ -897,6 +897,12 @@ class ExquisFingerings {
 
     if (this.handprintCaptureState === 'capturing_fingers') {
       if (this.handprintCaptures.length >= 5) return;
+
+      // Check if this MIDI note has already been captured
+      if (this.handprintCaptures.some(cap => cap.midiNote === midiNote)) {
+        console.log('Ignoring duplicate MIDI note:', midiNote);
+        return;
+      }
 
       // Convert MIDI note to pad index using session basenote
       const padIndex = midiNote - this.handprintSessionBaseMidi;

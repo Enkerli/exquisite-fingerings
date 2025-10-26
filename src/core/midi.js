@@ -255,14 +255,19 @@ export class MIDIManager {
   _handleMidiInput(message) {
     const [status, note, velocity] = message.data;
     const messageType = status & 0xF0;
+    const channel = status & 0x0F;
 
-    // Note On (0x90) or Note Off (0x80)
+    // Only accept Note On (0x90) and Note Off (0x80) messages
+    // Filter out: Polyphonic Aftertouch (0xA0), Control Change (0xB0),
+    // Channel Pressure (0xD0), Pitch Bend (0xE0)
     if (messageType === 0x90 || messageType === 0x80) {
       const actualVelocity = messageType === 0x80 ? 0 : velocity;
+      // Only trigger handler for actual note events (velocity > 0 for Note On)
       if (this.noteHandler) {
         this.noteHandler(note, actualVelocity);
       }
     }
+    // Ignore all other message types during capture
   }
 
   /**
