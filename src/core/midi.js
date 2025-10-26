@@ -230,10 +230,12 @@ export class MIDIManager {
   /**
    * Set note handler for MIDI input
    * Used for capturing handprints and other input scenarios
-   * @param {Function|null} handler - Function(midiNote, velocity) or null to clear
+   * @param {Function|null} handler - Function(padID, velocity) or null to clear
+   * @param {boolean} devMode - If true, listen for Developer Mode messages on channel 16
    */
-  setNoteHandler(handler) {
+  setNoteHandler(handler, devMode = false) {
     this.noteHandler = handler;
+    this.devModeActive = devMode;
 
     // Listen to all input devices
     if (this.midiAccess) {
@@ -257,6 +259,20 @@ export class MIDIManager {
     const messageType = status & 0xF0;
     const channel = status & 0x0F;
 
+    // In Developer Mode, listen on channel 16 (index 15) for pad IDs
+    if (this.devModeActive && channel === 15) {
+      // Developer Mode: 9F [pad 0-60] 7F (press), 8F [pad 0-60] 00 (release)
+      if (messageType === 0x90 || messageType === 0x80) {
+        const actualVelocity = messageType === 0x80 ? 0 : velocity;
+        const padID = note; // In dev mode, note IS the pad ID (0-60)
+        if (this.noteHandler) {
+          this.noteHandler(padID, actualVelocity);
+        }
+      }
+      return;
+    }
+
+    // Normal mode: accept Note On/Off on any channel
     // Only accept Note On (0x90) and Note Off (0x80) messages
     // Filter out: Polyphonic Aftertouch (0xA0), Control Change (0xB0),
     // Channel Pressure (0xD0), Pitch Bend (0xE0)
@@ -268,6 +284,43 @@ export class MIDIManager {
       }
     }
     // Ignore all other message types during capture
+  }
+
+  /**
+   * Send SysEx message
+   * @param {Array<number>} data - SysEx data bytes
+   */
+  sendSysEx(data) {
+    if (!this.selectedOutput) {
+      console.warn('No MIDI output device selected');
+      return;
+    }
+
+    try {
+      this.selectedOutput.send(data);
+    } catch (err) {
+      console.error('SysEx send error:', err);
+    }
+  }
+
+  /**
+   * Enter Exquis Developer Mode (pads only)
+   * Sends: F0 00 21 7E 7F 00 01 F7
+   */
+  enterExquisDeveloperMode() {
+    const sysex = [0xF0, 0x00, 0x21, 0x7E, 0x7F, 0x00, 0x01, 0xF7];
+    this.sendSysEx(sysex);
+    console.log('Entered Exquis Developer Mode (pads)');
+  }
+
+  /**
+   * Exit Exquis Developer Mode
+   * Sends: F0 00 21 7E 7F 00 00 F7
+   */
+  exitExquisDeveloperMode() {
+    const sysex = [0xF0, 0x00, 0x21, 0x7E, 0x7F, 0x00, 0x00, 0xF7];
+    this.sendSysEx(sysex);
+    console.log('Exited Exquis Developer Mode');
   }
 
   /**

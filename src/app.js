@@ -36,6 +36,9 @@ class ExquisFingerings {
     this.gridElement = document.getElementById('grid');
     this.gridRenderer = new GridRenderer(this.gridElement);
 
+    // Ensure grid starts in intervals mode
+    setGridMode('intervals');
+
     // Initialize
     this.initUI();
     this.loadStoredSettings();
@@ -778,9 +781,9 @@ class ExquisFingerings {
 
     // Start capture session
     this.handprintMode = true;
-    this.handprintCaptureState = 'waiting_basenote';
+    this.handprintCaptureState = 'capturing_fingers'; // Skip basenote step with Developer Mode
     this.handprintCaptures = [];
-    this.handprintSessionBaseMidi = null;
+    this.handprintSessionBaseMidi = this.settings.baseMidi; // Use current baseMidi setting
     this.handprintSessionID = `session_${Date.now()}`;
     this.handprintSessionCount = 0;
     this.lastHandprintNoteTime = 0;  // For debouncing
@@ -792,33 +795,35 @@ class ExquisFingerings {
     // Switch grid to chromatic mode (sequential pad numbering)
     setGridMode('chromatic');
 
+    // Enter Exquis Developer Mode (pads send pad IDs on channel 16)
+    midiManager.enterExquisDeveloperMode();
+
     this.render();
 
     const statusEl = document.getElementById('handprintCaptureStatus');
     if (statusEl) {
       statusEl.innerHTML = `
         <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
-          <strong>Capture Session Started - ${this.handprintCaptureHand.toUpperCase()} hand</strong><br/>
-          <strong style="color:#fa0;">⚠️ Exquis must be in CHROMATIC layout!</strong><br/>
-          <strong style="color:#6f6;">STEP 1: Press any pad to set basenote (reference point)</strong>
+          <strong>Capture Active - ${this.handprintCaptureHand.toUpperCase()} hand</strong><br/>
+          <strong style="color:#6f6;">Press 5 fingers in order 👍 1 → 2 → 3 → 4 → 5 🤙</strong>
           <div style="margin-top:8px; font-size:1.2em; color:#6af;">
-            <strong id="handprintCounter">Waiting for basenote...</strong>
+            <strong id="handprintCounter">Captured: 0/5</strong>
           </div>
         </div>
       `;
     }
 
-    // Listen for MIDI input - only note ON events (velocity > 0)
-    midiManager.setNoteHandler((midiNote, velocity) => {
+    // Listen for MIDI input in Developer Mode (channel 16, pad IDs)
+    midiManager.setNoteHandler((padID, velocity) => {
       if (this.handprintMode && velocity > 0) {
         // Debounce rapid note events (prevent note on + off triggering twice)
         const now = Date.now();
         if (now - this.lastHandprintNoteTime > 100) {  // 100ms debounce
           this.lastHandprintNoteTime = now;
-          this.handleHandprintMidiNote(midiNote);
+          this.handleHandprintPadID(padID);
         }
       }
-    });
+    }, true); // true = Developer Mode
   }
 
   /**
@@ -826,6 +831,9 @@ class ExquisFingerings {
    */
   stopHandprintSession() {
     const hasCaptures = this.handprintSessionCount > 0;
+
+    // Exit Exquis Developer Mode
+    midiManager.exitExquisDeveloperMode();
 
     // Reset capture state
     this.handprintMode = false;
@@ -868,116 +876,28 @@ class ExquisFingerings {
   }
 
   /**
-   * Handle MIDI note during handprint capture
+   * Handle pad ID from Developer Mode (0-60)
    */
-  handleHandprintMidiNote(midiNote) {
-    if (this.handprintCaptureState === 'waiting_basenote') {
-      // Set basenote and start capturing fingers
-      this.handprintSessionBaseMidi = midiNote;
-      this.settings.baseMidi = midiNote;
-      this.handprintCaptureState = 'capturing_fingers';
-      this.handprintCaptures = [];
+  handleHandprintPadID(padID) {
+    if (this.handprintCaptureState !== 'capturing_fingers') return;
+    if (this.handprintCaptures.length >= 5) return;
 
-      const statusEl = document.getElementById('handprintCaptureStatus');
-      if (statusEl) {
-        statusEl.innerHTML = `
-          <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
-            <strong>Basenote Set: MIDI ${midiNote}</strong><br/>
-            <strong style="color:#6f6;">STEP 2: Press 5 fingers in order 👍 1 → 2 → 3 → 4 → 5 🤙</strong>
-            <div style="margin-top:8px; font-size:1.2em; color:#6af;">
-              <strong id="handprintCounter">Captured: 0/5</strong>
-            </div>
-          </div>
-        `;
-      }
-
-      this.render();
+    // Check if this pad ID has already been captured
+    if (this.handprintCaptures.some(cap => cap.padIndex === padID)) {
+      console.log('Ignoring duplicate pad ID:', padID);
       return;
     }
 
-    if (this.handprintCaptureState === 'capturing_fingers') {
-      if (this.handprintCaptures.length >= 5) return;
-
-      // Check if this MIDI note has already been captured
-      if (this.handprintCaptures.some(cap => cap.midiNote === midiNote)) {
-        console.log('Ignoring duplicate MIDI note:', midiNote);
-        return;
-      }
-
-      // Convert MIDI note to pad index using session basenote
-      const padIndex = midiNote - this.handprintSessionBaseMidi;
-
-      // Convert pad index to (row, col) using proper grid logic
-      try {
-        const { row, col } = getRowCol(padIndex);
-
-        this.handprintCaptures.push({
-          row,
-          col,
-          padIndex,
-          midiNote,
-          finger: this.handprintCaptures.length + 1,
-          timestamp: Date.now()
-        });
-
-        // Update counter
-        const counterEl = document.getElementById('handprintCounter');
-        if (counterEl) {
-          counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5`;
-        }
-
-        // Visual feedback on grid (show numbered fingers)
-        this.render();
-
-        if (this.handprintCaptures.length === 5) {
-          this.finishHandprintCapture();
-        }
-      } catch (err) {
-        console.error('Invalid pad index from MIDI note:', midiNote, padIndex, err);
-      }
-    }
-  }
-
-  /**
-   * Handle pad click during handprint capture (fallback if no MIDI)
-   */
-  handleHandprintClick(row, col) {
-    const padIndex = getPadIndex(row, col);
-
-    if (this.handprintCaptureState === 'waiting_basenote') {
-      // Set basenote from clicked pad
-      const midiNote = this.settings.baseMidi + padIndex;
-      this.handprintSessionBaseMidi = midiNote;
-      this.settings.baseMidi = midiNote;
-      this.handprintCaptureState = 'capturing_fingers';
-      this.handprintCaptures = [];
-
-      const statusEl = document.getElementById('handprintCaptureStatus');
-      if (statusEl) {
-        statusEl.innerHTML = `
-          <div style="background:#334; padding:12px; border-radius:4px; margin-top:8px;">
-            <strong>Basenote Set: MIDI ${midiNote} (pad ${padIndex})</strong><br/>
-            <strong style="color:#6f6;">STEP 2: Click 5 pads in order 👍 1 → 2 → 3 → 4 → 5 🤙</strong>
-            <div style="margin-top:8px; font-size:1.2em; color:#6af;">
-              <strong id="handprintCounter">Captured: 0/5</strong>
-            </div>
-          </div>
-        `;
-      }
-
-      this.render();
-      return;
-    }
-
-    if (this.handprintCaptureState === 'capturing_fingers') {
-      if (this.handprintCaptures.length >= 5) return;
-
-      const midiNote = this.handprintSessionBaseMidi + padIndex;
+    // In chromatic mode, pad ID (0-60) IS the pad index
+    // Convert to (row, col) using chromatic grid logic
+    try {
+      const { row, col } = getRowCol(padID);
+      const midiNote = this.handprintSessionBaseMidi + padID;
 
       this.handprintCaptures.push({
         row,
         col,
-        padIndex,
+        padIndex: padID,
         midiNote,
         finger: this.handprintCaptures.length + 1,
         timestamp: Date.now()
@@ -986,7 +906,7 @@ class ExquisFingerings {
       // Update counter
       const counterEl = document.getElementById('handprintCounter');
       if (counterEl) {
-        counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5 (click)`;
+        counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5`;
       }
 
       // Visual feedback on grid (show numbered fingers)
@@ -995,6 +915,48 @@ class ExquisFingerings {
       if (this.handprintCaptures.length === 5) {
         this.finishHandprintCapture();
       }
+    } catch (err) {
+      console.error('Invalid pad ID:', padID, err);
+    }
+  }
+
+  /**
+   * Handle pad click during handprint capture (fallback if no MIDI/Developer Mode)
+   */
+  handleHandprintClick(row, col) {
+    if (this.handprintCaptureState !== 'capturing_fingers') return;
+    if (this.handprintCaptures.length >= 5) return;
+
+    const padIndex = getPadIndex(row, col);
+
+    // Check if this pad has already been captured
+    if (this.handprintCaptures.some(cap => cap.padIndex === padIndex)) {
+      console.log('Ignoring duplicate pad click:', padIndex);
+      return;
+    }
+
+    const midiNote = this.handprintSessionBaseMidi + padIndex;
+
+    this.handprintCaptures.push({
+      row,
+      col,
+      padIndex,
+      midiNote,
+      finger: this.handprintCaptures.length + 1,
+      timestamp: Date.now()
+    });
+
+    // Update counter
+    const counterEl = document.getElementById('handprintCounter');
+    if (counterEl) {
+      counterEl.textContent = `Captured: ${this.handprintCaptures.length}/5 (click)`;
+    }
+
+    // Visual feedback on grid (show numbered fingers)
+    this.render();
+
+    if (this.handprintCaptures.length === 5) {
+      this.finishHandprintCapture();
     }
   }
 
