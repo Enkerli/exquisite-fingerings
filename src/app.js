@@ -13,6 +13,7 @@ import { debugLog } from './utils/debug.js';
 import { findChordFingerings } from './analysis/chord-matcher.js';
 import { rankFingerings } from './analysis/fingering-scorer.js';
 import { synthesizeFingerings } from './analysis/fingering-synthesizer.js';
+import { getChordPitchClasses, getChordName, analyzeVoicing } from './core/chord-dictionary.js';
 
 /**
  * Main App class
@@ -48,6 +49,15 @@ class ExquisFingerings {
     this.currentSuggestionRating = 3;  // User rating for current suggestion
     this.suggestionEditMode = false;  // Whether we're editing the current suggestion
     this.editingPad = null;  // Which pad is being edited {row, col}
+
+    // Chord capture state
+    this.chordCaptureActive = false;  // Whether chord capture is active
+    this.chordCaptureHand = 'right';  // Selected hand for chord capture
+    this.chordCaptureSequence = [];  // Captured pad sequence (finger 1-5)
+    this.chordCapturePitchClasses = [];  // Target chord pitch classes
+    this.chordCaptureRoot = 0;  // Root pitch class
+    this.chordCaptureQuality = 'dom7';  // Chord quality
+    this.savedChordFingerings = this.settings.chordFingerings || [];  // Saved chord fingerings
 
     // UI Elements
     this.gridElement = document.getElementById('grid');
@@ -230,6 +240,40 @@ class ExquisFingerings {
       ergoAnalyzer.setHandSize(value);
       this.settings.handSize = value;
       saveSettings(this.settings);
+    });
+
+    // Chord capture - Hand selection
+    document.getElementById('captureLeftHand')?.addEventListener('click', () => {
+      this.selectChordCaptureHand('left');
+    });
+
+    document.getElementById('captureRightHand')?.addEventListener('click', () => {
+      this.selectChordCaptureHand('right');
+    });
+
+    // Chord capture - Start
+    document.getElementById('startChordCapture')?.addEventListener('click', () => {
+      this.startChordCapture();
+    });
+
+    // Chord capture - Stop
+    document.getElementById('stopChordCapture')?.addEventListener('click', () => {
+      this.stopChordCapture();
+    });
+
+    // Chord capture - Save
+    document.getElementById('saveCapturedFingering')?.addEventListener('click', () => {
+      this.saveChordFingering();
+    });
+
+    // Chord capture - Discard
+    document.getElementById('discardCapturedFingering')?.addEventListener('click', () => {
+      this.discardChordFingering();
+    });
+
+    // Chord capture - Comfort rating
+    document.getElementById('captureComfort')?.addEventListener('input', (e) => {
+      document.getElementById('captureComfortValue').textContent = e.target.value;
     });
 
     // Hand selection for handprint capture
@@ -1750,6 +1794,267 @@ class ExquisFingerings {
     if (pos) {
       this.showFingerSelector(row, col, pos.finger);
     }
+  }
+
+  /**
+   * Select hand for chord capture
+   */
+  selectChordCaptureHand(hand) {
+    this.chordCaptureHand = hand;
+
+    // Update UI
+    document.getElementById('captureLeftHand').classList.toggle('active', hand === 'left');
+    document.getElementById('captureRightHand').classList.toggle('active', hand === 'right');
+  }
+
+  /**
+   * Start chord fingering capture
+   */
+  async startChordCapture() {
+    // Get chord from selectors
+    const rootPC = parseInt(document.getElementById('chordRoot').value);
+    const quality = document.getElementById('chordQuality').value;
+
+    // Get pitch classes for this chord
+    const pitchClasses = getChordPitchClasses(rootPC, quality);
+    const chordName = getChordName(rootPC, quality);
+
+    this.chordCaptureRoot = rootPC;
+    this.chordCaptureQuality = quality;
+    this.chordCapturePitchClasses = pitchClasses;
+    this.chordCaptureSequence = [];
+
+    // Initialize MIDI if needed
+    if (!midiManager.midiAccess) {
+      try {
+        await midiManager.init();
+      } catch (err) {
+        alert('MIDI initialization failed. Please enable MIDI first.');
+        return;
+      }
+    }
+
+    // Get dev mode instance
+    const devMode = midiManager.getDevMode();
+
+    // Enter dev mode (pads only)
+    try {
+      await devMode.enter(0x01); // ZONE_MASK.PADS
+
+      // Highlight chord across entire grid
+      devMode.highlightChord(pitchClasses, rootPC, 0, 0);
+
+      // Set up pad event handler
+      devMode.on('padPress', (padId, velocity) => {
+        this.handleChordCapturePadPress(padId, velocity);
+      });
+
+      // Enable MIDI input handler for dev mode
+      midiManager.setNoteHandler(null, true);
+
+      // Update UI
+      this.chordCaptureActive = true;
+      document.getElementById('chordCaptureStatus').innerHTML = `
+        <div class="success-box">
+          ✓ Capturing ${chordName} - Press pads in finger sequence (1→5)
+        </div>
+      `;
+      document.getElementById('chordCaptureActive').style.display = 'block';
+      this.updateCaptureProgress();
+
+    } catch (err) {
+      alert(`Failed to enter developer mode: ${err.message}`);
+      console.error('Dev mode error:', err);
+    }
+  }
+
+  /**
+   * Handle pad press during chord capture
+   */
+  handleChordCapturePadPress(padId, velocity) {
+    if (!this.chordCaptureActive) return;
+
+    // Get current finger number (sequence length + 1)
+    const fingerNum = this.chordCaptureSequence.length + 1;
+
+    if (fingerNum > 5) {
+      // Already captured 5 fingers, ignore
+      return;
+    }
+
+    // Record this pad
+    this.chordCaptureSequence.push({
+      padId: padId,
+      finger: fingerNum,
+      timestamp: Date.now(),
+      velocity: velocity
+    });
+
+    // Update progress
+    this.updateCaptureProgress();
+
+    // If we've captured 5 fingers (or user stops early), move to rating
+    if (this.chordCaptureSequence.length >= 5) {
+      setTimeout(() => {
+        this.stopChordCapture();
+      }, 300);
+    }
+  }
+
+  /**
+   * Update capture progress display
+   */
+  updateCaptureProgress() {
+    const progress = document.getElementById('captureProgress');
+    const captured = this.chordCaptureSequence.length;
+    const fingers = this.chordCaptureSequence.map(p => `F${p.finger}:Pad${p.padId}`).join(', ');
+
+    progress.innerHTML = `
+      Captured: ${captured}/5 fingers<br>
+      ${fingers || 'Press first pad with finger 1...'}
+    `;
+  }
+
+  /**
+   * Stop chord capture
+   */
+  async stopChordCapture() {
+    if (!this.chordCaptureActive) return;
+
+    // Exit dev mode
+    const devMode = midiManager.getDevMode();
+    await devMode.exit();
+
+    // Disable MIDI handler
+    midiManager.setNoteHandler(null, false);
+
+    this.chordCaptureActive = false;
+
+    // If we have at least 3 fingers, show rating UI
+    if (this.chordCaptureSequence.length >= 3) {
+      this.showChordCaptureRating();
+    } else {
+      // Not enough fingers, just clear
+      document.getElementById('chordCaptureStatus').innerHTML = `
+        <div class="warning-box">
+          Capture stopped. Need at least 3 fingers for a valid fingering.
+        </div>
+      `;
+      document.getElementById('chordCaptureActive').style.display = 'none';
+      this.chordCaptureSequence = [];
+    }
+  }
+
+  /**
+   * Show rating UI for captured fingering
+   */
+  showChordCaptureRating() {
+    document.getElementById('chordCaptureActive').style.display = 'none';
+
+    // Filter to only chord tones (remove skips)
+    const chordTones = this.chordCaptureSequence.filter(pad => {
+      const pc = pad.padId % 12; // Simplified - assumes pad IDs map directly to pitch classes
+      return this.chordCapturePitchClasses.includes(pc);
+    });
+
+    // Display fingering
+    const display = document.getElementById('capturedFingeringDisplay');
+    const chordName = getChordName(this.chordCaptureRoot, this.chordCaptureQuality);
+
+    display.innerHTML = `
+      <strong>${chordName}</strong> (${this.chordCaptureHand} hand)<br>
+      ${this.chordCaptureSequence.map(p => {
+        const isChordTone = this.chordCapturePitchClasses.includes(p.padId % 12);
+        const label = isChordTone ? `Finger ${p.finger}: Pad ${p.padId}` : `Finger ${p.finger}: SKIP (Pad ${p.padId})`;
+        return `<div style="opacity:${isChordTone ? 1 : 0.5}">${label}</div>`;
+      }).join('')}
+    `;
+
+    document.getElementById('chordCaptureRate').style.display = 'block';
+  }
+
+  /**
+   * Save captured chord fingering
+   */
+  saveChordFingering() {
+    const comfort = parseInt(document.getElementById('captureComfort').value);
+
+    // Convert pad IDs to MIDI notes (assuming intervals mode)
+    const positions = this.chordCaptureSequence.map(pad => ({
+      padId: pad.padId,
+      finger: pad.finger,
+      // We'll analyze MIDI notes based on pad positions
+      timestamp: pad.timestamp
+    }));
+
+    const fingering = {
+      id: `chord_${Date.now()}`,
+      chordRoot: this.chordCaptureRoot,
+      chordQuality: this.chordCaptureQuality,
+      pitchClasses: this.chordCapturePitchClasses,
+      hand: this.chordCaptureHand,
+      positions: positions,
+      comfortRating: comfort,
+      capturedAt: Date.now()
+    };
+
+    // Save to storage
+    this.savedChordFingerings.push(fingering);
+    this.settings.chordFingerings = this.savedChordFingerings;
+    saveSettings(this.settings);
+
+    // Show success
+    const chordName = getChordName(this.chordCaptureRoot, this.chordCaptureQuality);
+    document.getElementById('chordCaptureStatus').innerHTML = `
+      <div class="success-box">
+        ✓ Saved ${chordName} fingering (comfort: ${comfort}/5)
+      </div>
+    `;
+
+    // Clear UI
+    document.getElementById('chordCaptureRate').style.display = 'none';
+    this.chordCaptureSequence = [];
+
+    // Update list
+    this.updateChordFingeringList();
+  }
+
+  /**
+   * Discard captured chord fingering
+   */
+  discardChordFingering() {
+    document.getElementById('chordCaptureRate').style.display = 'none';
+    document.getElementById('chordCaptureStatus').innerHTML = '';
+    this.chordCaptureSequence = [];
+  }
+
+  /**
+   * Update chord fingering list display
+   */
+  updateChordFingeringList() {
+    const listEl = document.getElementById('chordFingeringList');
+
+    if (this.savedChordFingerings.length === 0) {
+      listEl.innerHTML = '<div style="opacity:0.7;">No chord fingerings captured yet.</div>';
+      document.getElementById('exportChordFingerings').style.display = 'none';
+      document.getElementById('clearChordFingerings').style.display = 'none';
+      return;
+    }
+
+    listEl.innerHTML = this.savedChordFingerings.map((f, index) => {
+      const chordName = getChordName(f.chordRoot, f.chordQuality);
+      return `
+        <div style="padding:6px; background:#f5f5f5; border-radius:3px; margin-bottom:4px;">
+          <strong>${chordName}</strong> (${f.hand})<br>
+          <span style="font-size:0.85em;">
+            ${f.positions.length} fingers • Comfort: ${f.comfortRating}/5
+          </span>
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('exportChordFingerings').style.display = 'block';
+    document.getElementById('clearChordFingerings').style.display = 'block';
   }
 }
 
