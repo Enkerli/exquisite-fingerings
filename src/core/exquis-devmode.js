@@ -4,6 +4,8 @@
  * Spec: Exquis Developer Mode MIDI specification
  */
 
+import { ROW_START_CHROMATIC, ROW_START_INTERVALS, ROW_COUNT, getRowLength } from './grid.js';
+
 /**
  * SysEx header for all Exquis commands
  * F0 00 21 7E 7F [id] [...] F7
@@ -190,12 +192,31 @@ export class ExquisDevMode {
   highlightChord(pitchClasses, rootPC, baseMidi = 0, transpose = 0) {
     const pads = [];
 
-    // Calculate interval positions (assuming thirds layout)
+    // Calculate interval positions
     const intervals = this.calculateIntervals(pitchClasses, rootPC);
 
-    // For each pad on the grid
-    for (let padId = 0; padId <= 60; padId++) {
-      const midiNote = baseMidi + padId + transpose;
+    // Iterate through all 61 pads using chromatic pad IDs for LED addressing
+    for (let chromaticPadId = 0; chromaticPadId <= 60; chromaticPadId++) {
+      // Convert chromatic pad ID to (row, col)
+      let row = 0, col = 0;
+      let found = false;
+      for (let r = 0; r < ROW_COUNT; r++) {
+        if (chromaticPadId >= ROW_START_CHROMATIC[r]) {
+          const c = chromaticPadId - ROW_START_CHROMATIC[r];
+          if (c >= 0 && c < getRowLength(r)) {
+            row = r;
+            col = c;
+            found = true;
+            break;
+          }
+        }
+      }
+
+      if (!found) continue;
+
+      // Calculate intervals mode pad index for pitch class calculation
+      const intervalsPadIndex = ROW_START_INTERVALS[row] + col;
+      const midiNote = baseMidi + intervalsPadIndex + transpose;
       const pc = midiNote % 12;
 
       if (pitchClasses.includes(pc)) {
@@ -204,7 +225,7 @@ export class ExquisDevMode {
         const color = this.getColorForInterval(interval, pc === rootPC);
 
         pads.push({
-          id: padId,
+          id: chromaticPadId,  // Use chromatic pad ID for LED addressing
           r: color.r,
           g: color.g,
           b: color.b,
@@ -212,7 +233,7 @@ export class ExquisDevMode {
         });
       } else {
         // Turn off non-chord pads
-        pads.push({ id: padId, r: 0, g: 0, b: 0, fx: LED_EFFECT.NONE });
+        pads.push({ id: chromaticPadId, r: 0, g: 0, b: 0, fx: LED_EFFECT.NONE });
       }
     }
 
