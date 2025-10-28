@@ -7,7 +7,7 @@ import { GridRenderer } from './ui/svg-grid.js';
 import { midiManager } from './core/midi.js';
 import { FingeringPattern, ergoAnalyzer } from './core/fingering.js';
 import { getPitchClasses, parseCustomPitchClasses, PITCH_CLASS_SETS } from './core/music.js';
-import { getRowCol, getPadIndex, setGridMode } from './core/grid.js';
+import { getRowCol, getPadIndex, setGridMode, ROW_START_CHROMATIC, getRowLength } from './core/grid.js';
 import { savePattern, loadPattern, deletePattern, getPatternNames, saveSettings, loadSettings } from './utils/storage.js';
 import { debugLog } from './utils/debug.js';
 import { findChordFingerings } from './analysis/chord-matcher.js';
@@ -1991,11 +1991,23 @@ class ExquisFingerings {
   showChordCaptureRating() {
     document.getElementById('chordCaptureActive').style.display = 'none';
 
-    // Filter to only chord tones (remove skips)
-    const chordTones = this.chordCaptureSequence.filter(pad => {
-      const pc = pad.padId % 12; // Simplified - assumes pad IDs map directly to pitch classes
-      return this.chordCapturePitchClasses.includes(pc);
-    });
+    // Helper: convert chromatic pad ID to pitch class
+    const getPCFromPadId = (padId) => {
+      // Find row/col from chromatic pad ID
+      let row = 0, col = 0;
+      for (let r = 0; r < 11; r++) {
+        if (padId >= ROW_START_CHROMATIC[r] && padId < ROW_START_CHROMATIC[r] + getRowLength(r)) {
+          row = r;
+          col = padId - ROW_START_CHROMATIC[r];
+          break;
+        }
+      }
+      // Get intervals pad index for this row/col
+      const intervalsPadIndex = getPadIndex(row, col);
+      // Calculate MIDI note and pitch class
+      const midiNote = this.settings.baseMidi + intervalsPadIndex;
+      return midiNote % 12;
+    };
 
     // Display fingering
     const display = document.getElementById('capturedFingeringDisplay');
@@ -2004,7 +2016,8 @@ class ExquisFingerings {
     display.innerHTML = `
       <strong>${chordName}</strong> (${this.chordCaptureHand} hand)<br>
       ${this.chordCaptureSequence.map(p => {
-        const isChordTone = this.chordCapturePitchClasses.includes(p.padId % 12);
+        const pc = getPCFromPadId(p.padId);
+        const isChordTone = this.chordCapturePitchClasses.includes(pc);
         const label = isChordTone ? `Finger ${p.finger}: Pad ${p.padId}` : `Finger ${p.finger}: SKIP (Pad ${p.padId})`;
         return `<div style="opacity:${isChordTone ? 1 : 0.5}">${label}</div>`;
       }).join('')}
