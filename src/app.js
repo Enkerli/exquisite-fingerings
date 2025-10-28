@@ -1823,6 +1823,7 @@ class ExquisFingerings {
     this.chordCaptureQuality = quality;
     this.chordCapturePitchClasses = pitchClasses;
     this.chordCaptureSequence = [];
+    this.lastChordCaptureTime = 0; // Reset debounce timer
 
     // Auto-enable MIDI if not enabled (same as handprint capture)
     if (!midiManager.getStatus().isInitialized) {
@@ -1910,12 +1911,26 @@ class ExquisFingerings {
       return;
     }
 
+    // Debounce rapid-fire events (prevent duplicate captures)
+    const now = Date.now();
+    if (!this.lastChordCaptureTime) this.lastChordCaptureTime = 0;
+    if (now - this.lastChordCaptureTime < 200) { // 200ms debounce
+      console.log('[ChordCapture] Ignoring - too soon after last capture (debounce)');
+      return;
+    }
+
     // Get current finger number (sequence length + 1)
     const fingerNum = this.chordCaptureSequence.length + 1;
 
     if (fingerNum > 5) {
       // Already captured 5 fingers, ignore
       console.log('[ChordCapture] Ignoring pad press - already have 5 fingers');
+      return;
+    }
+
+    // Check for duplicate pad (same finger can't use same pad twice in sequence)
+    if (this.chordCaptureSequence.some(p => p.padId === padId)) {
+      console.log('[ChordCapture] Ignoring duplicate pad:', padId);
       return;
     }
 
@@ -1927,6 +1942,7 @@ class ExquisFingerings {
       velocity: velocity
     });
 
+    this.lastChordCaptureTime = now;
     console.log('[ChordCapture] Recorded pad press - finger', fingerNum, 'at pad', padId);
 
     // Update progress
@@ -1991,6 +2007,10 @@ class ExquisFingerings {
   showChordCaptureRating() {
     document.getElementById('chordCaptureActive').style.display = 'none';
 
+    // Log chord pitch classes for debugging
+    console.log('[ChordCapture] Chord pitch classes:', this.chordCapturePitchClasses);
+    console.log('[ChordCapture] Base MIDI:', this.settings.baseMidi);
+
     // Helper: convert chromatic pad ID to pitch class
     const getPCFromPadId = (padId) => {
       // Find row/col from chromatic pad ID
@@ -2006,7 +2026,12 @@ class ExquisFingerings {
       const intervalsPadIndex = getPadIndex(row, col);
       // Calculate MIDI note and pitch class
       const midiNote = this.settings.baseMidi + intervalsPadIndex;
-      return midiNote % 12;
+      const pc = midiNote % 12;
+
+      // Debug logging
+      console.log(`[ChordCapture] Pad ${padId} → row=${row}, col=${col} → intervals=${intervalsPadIndex} → MIDI=${midiNote} → PC=${pc}`);
+
+      return pc;
     };
 
     // Display fingering
@@ -2018,6 +2043,7 @@ class ExquisFingerings {
       ${this.chordCaptureSequence.map(p => {
         const pc = getPCFromPadId(p.padId);
         const isChordTone = this.chordCapturePitchClasses.includes(pc);
+        console.log(`[ChordCapture] Pad ${p.padId} PC=${pc}, isChordTone=${isChordTone}`);
         const label = isChordTone ? `Finger ${p.finger}: Pad ${p.padId}` : `Finger ${p.finger}: SKIP (Pad ${p.padId})`;
         return `<div style="opacity:${isChordTone ? 1 : 0.5}">${label}</div>`;
       }).join('')}
