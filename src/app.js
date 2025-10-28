@@ -1824,7 +1824,7 @@ class ExquisFingerings {
     this.chordCapturePitchClasses = pitchClasses;
     this.chordCaptureSequence = [];
 
-    // Auto-enable MIDI if not enabled
+    // Auto-enable MIDI if not enabled (same as handprint capture)
     if (!midiManager.getStatus().isInitialized) {
       try {
         await midiManager.init();
@@ -1850,9 +1850,18 @@ class ExquisFingerings {
       }
     }
 
+    // Check if device is selected (Fix #1)
+    if (!midiManager.selectedOutput) {
+      alert('Please select a MIDI output device first.');
+      return;
+    }
+
     // Get dev mode instance
     const devMode = midiManager.getDevMode();
     console.log('[ChordCapture] Dev mode instance:', devMode);
+
+    // Set flag BEFORE entering dev mode to prevent timing issues
+    this.chordCaptureActive = true;
 
     // Enter dev mode (pads only)
     try {
@@ -1869,12 +1878,12 @@ class ExquisFingerings {
         this.handleChordCapturePadPress(padId, velocity);
       });
 
-      // Enable MIDI input handler for dev mode
-      midiManager.setNoteHandler(null, true);
+      // Enable MIDI input in developer mode
+      // The MIDI manager automatically routes dev mode messages to devMode.handleMidiMessage
+      midiManager.setNoteHandler(null, true); // true = Developer Mode
       console.log('[ChordCapture] Enabled MIDI input handler for dev mode');
 
       // Update UI
-      this.chordCaptureActive = true;
       document.getElementById('chordCaptureStatus').innerHTML = `
         <div class="success-box">
           ✓ Capturing ${chordName} - Press pads in finger sequence (1→5)
@@ -1884,6 +1893,7 @@ class ExquisFingerings {
       this.updateCaptureProgress();
 
     } catch (err) {
+      this.chordCaptureActive = false;
       alert(`Failed to enter developer mode: ${err.message}`);
       console.error('Dev mode error:', err);
     }
