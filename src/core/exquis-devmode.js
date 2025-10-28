@@ -303,19 +303,35 @@ export class ExquisDevMode {
     const channel = status & 0x0F;
     const command = status & 0xF0;
 
+    console.log('[DevMode] handleMidiMessage:', {
+      status: status.toString(16),
+      channel,
+      command: command.toString(16),
+      note,
+      velocity
+    });
+
     // Dev mode uses channel 16 (15 in 0-indexed)
-    if (channel !== 0x0F) return;
+    if (channel !== 0x0F) {
+      console.log('[DevMode] Ignoring - not channel 16');
+      return;
+    }
 
     // Note On (0x90) = pad press
     if (command === 0x90 && velocity > 0) {
+      console.log('[DevMode] Pad press detected - note:', note, 'velocity:', velocity);
       this.padStates[note] = true;
       if (this.eventHandlers.padPress) {
+        console.log('[DevMode] Calling padPress handler');
         this.eventHandlers.padPress(note, velocity);
+      } else {
+        console.log('[DevMode] No padPress handler registered!');
       }
     }
 
     // Note Off (0x80) or Note On with velocity 0 = pad release
     if (command === 0x80 || (command === 0x90 && velocity === 0)) {
+      console.log('[DevMode] Pad release detected - note:', note);
       this.padStates[note] = false;
       if (this.eventHandlers.padRelease) {
         this.eventHandlers.padRelease(note);

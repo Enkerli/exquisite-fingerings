@@ -1824,33 +1824,54 @@ class ExquisFingerings {
     this.chordCapturePitchClasses = pitchClasses;
     this.chordCaptureSequence = [];
 
-    // Initialize MIDI if needed
-    if (!midiManager.midiAccess) {
+    // Auto-enable MIDI if not enabled
+    if (!midiManager.getStatus().isInitialized) {
       try {
         await midiManager.init();
+        this.updateMIDIDeviceList();
+        this.updateMIDIStatus();
+
+        // Auto-select output device, preferring "Exquis" over others
+        const devices = midiManager.getOutputDevices();
+        if (devices.length > 0) {
+          // Try to find "Exquis" device first
+          const exquisDevice = devices.find(d => d.name.toLowerCase().includes('exquis'));
+          const selectedDevice = exquisDevice || devices[0];
+
+          midiManager.selectOutputDevice(selectedDevice.id);
+          document.getElementById('midiDevice').value = selectedDevice.id;
+          this.updateMIDIStatus();
+
+          console.log('[ChordCapture] Auto-selected MIDI device:', selectedDevice.name);
+        }
       } catch (err) {
-        alert('MIDI initialization failed. Please enable MIDI first.');
+        alert(`Cannot enable MIDI: ${err.message}`);
         return;
       }
     }
 
     // Get dev mode instance
     const devMode = midiManager.getDevMode();
+    console.log('[ChordCapture] Dev mode instance:', devMode);
 
     // Enter dev mode (pads only)
     try {
       await devMode.enter(0x01); // ZONE_MASK.PADS
+      console.log('[ChordCapture] Entered dev mode');
 
       // Highlight chord across entire grid
       devMode.highlightChord(pitchClasses, rootPC, 0, 0);
+      console.log('[ChordCapture] Highlighted chord:', chordName, 'PCs:', pitchClasses);
 
       // Set up pad event handler
       devMode.on('padPress', (padId, velocity) => {
+        console.log('[ChordCapture] Pad press event:', padId, velocity);
         this.handleChordCapturePadPress(padId, velocity);
       });
 
       // Enable MIDI input handler for dev mode
       midiManager.setNoteHandler(null, true);
+      console.log('[ChordCapture] Enabled MIDI input handler for dev mode');
 
       // Update UI
       this.chordCaptureActive = true;
@@ -1872,13 +1893,19 @@ class ExquisFingerings {
    * Handle pad press during chord capture
    */
   handleChordCapturePadPress(padId, velocity) {
-    if (!this.chordCaptureActive) return;
+    console.log('[ChordCapture] handleChordCapturePadPress called:', { padId, velocity, active: this.chordCaptureActive });
+
+    if (!this.chordCaptureActive) {
+      console.log('[ChordCapture] Ignoring pad press - capture not active');
+      return;
+    }
 
     // Get current finger number (sequence length + 1)
     const fingerNum = this.chordCaptureSequence.length + 1;
 
     if (fingerNum > 5) {
       // Already captured 5 fingers, ignore
+      console.log('[ChordCapture] Ignoring pad press - already have 5 fingers');
       return;
     }
 
@@ -1890,11 +1917,14 @@ class ExquisFingerings {
       velocity: velocity
     });
 
+    console.log('[ChordCapture] Recorded pad press - finger', fingerNum, 'at pad', padId);
+
     // Update progress
     this.updateCaptureProgress();
 
     // If we've captured 5 fingers (or user stops early), move to rating
     if (this.chordCaptureSequence.length >= 5) {
+      console.log('[ChordCapture] Captured all 5 fingers, stopping...');
       setTimeout(() => {
         this.stopChordCapture();
       }, 300);
