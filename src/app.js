@@ -1879,8 +1879,8 @@ class ExquisFingerings {
       });
 
       // Enable MIDI input in developer mode
-      // The MIDI manager automatically routes dev mode messages to devMode.handleMidiMessage
-      midiManager.setNoteHandler(null, true); // true = Developer Mode
+      // Pass empty handler - MIDI manager will route dev mode messages automatically
+      midiManager.setNoteHandler(() => {}, true); // true = Developer Mode
       console.log('[ChordCapture] Enabled MIDI input handler for dev mode');
 
       // Update UI
