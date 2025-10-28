@@ -489,3 +489,13 @@ main {
 .handprint-item.right {
   border-left-color: #d00;
 }
+
+/* Nested details chevron indicator */
+details details summary span {
+  transition: transform 0.2s;
+  display: inline-block;
+}
+
+details details[open] summary span {
+  transform: rotate(-180deg);
+}

@@ -57,6 +57,8 @@ class ExquisFingerings {
     this.chordCapturePitchClasses = [];  // Target chord pitch classes
     this.chordCaptureRoot = 0;  // Root pitch class
     this.chordCaptureQuality = 'dom7';  // Chord quality
+    this.chordCaptureState = null;  // 'capturing' | 'rating' - Current state within session
+    this.chordCaptureSessionCount = 0;  // Count of chord fingerings in current session
     this.savedChordFingerings = this.settings.chordFingerings || [];  // Saved chord fingerings
 
     // UI Elements
@@ -298,6 +300,15 @@ class ExquisFingerings {
     // Clear handprints
     document.getElementById('clearHandprints')?.addEventListener('click', () => {
       this.clearAllHandprints();
+    });
+
+    // Chord fingering export/clear buttons
+    document.getElementById('exportChordFingerings')?.addEventListener('click', () => {
+      this.exportChordFingerings();
+    });
+
+    document.getElementById('clearChordFingerings')?.addEventListener('click', () => {
+      this.clearAllChordFingerings();
     });
 
     // Chord suggestion - Clear notes
@@ -1808,7 +1819,7 @@ class ExquisFingerings {
   }
 
   /**
-   * Start chord fingering capture
+   * Start chord fingering capture session
    */
   async startChordCapture() {
     // Get chord from selectors
@@ -1823,6 +1834,8 @@ class ExquisFingerings {
     this.chordCaptureQuality = quality;
     this.chordCapturePitchClasses = pitchClasses;
     this.chordCaptureSequence = [];
+    this.chordCaptureState = 'capturing'; // Initialize session state
+    this.chordCaptureSessionCount = 0; // Reset session counter
     this.lastChordCaptureTime = 0; // Reset debounce timer
 
     // Auto-enable MIDI if not enabled (same as handprint capture)
@@ -1948,11 +1961,11 @@ class ExquisFingerings {
     // Update progress
     this.updateCaptureProgress();
 
-    // If we've captured 5 fingers (or user stops early), move to rating
+    // If we've captured 5 fingers, finish this capture (but keep session active)
     if (this.chordCaptureSequence.length >= 5) {
-      console.log('[ChordCapture] Captured all 5 fingers, stopping...');
+      console.log('[ChordCapture] Captured all 5 fingers, finishing...');
       setTimeout(() => {
-        this.stopChordCapture();
+        this.finishChordCapture();
       }, 300);
     }
   }
@@ -1972,9 +1985,33 @@ class ExquisFingerings {
   }
 
   /**
-   * Stop chord capture
+   * Finish current chord capture and show rating (session continues)
    */
-  async stopChordCapture() {
+  finishChordCapture() {
+    if (!this.chordCaptureActive) return;
+
+    // Don't exit dev mode or disable MIDI - keep session active!
+    this.chordCaptureState = 'rating';
+
+    // If we have at least 3 fingers, show rating UI
+    if (this.chordCaptureSequence.length >= 3) {
+      this.showChordCaptureRating();
+    } else {
+      // Not enough fingers, just clear and continue
+      document.getElementById('chordCaptureStatus').innerHTML = `
+        <div class="warning-box">
+          Not enough fingers captured. Press pads to try again.
+        </div>
+      `;
+      this.chordCaptureSequence = [];
+      this.chordCaptureState = 'capturing';
+    }
+  }
+
+  /**
+   * Stop chord capture session (called by Stop Capture button)
+   */
+  async stopChordCaptureSession() {
     if (!this.chordCaptureActive) return;
 
     // Exit dev mode
@@ -1985,20 +2022,32 @@ class ExquisFingerings {
     midiManager.setNoteHandler(null, false);
 
     this.chordCaptureActive = false;
+    this.chordCaptureState = null;
 
-    // If we have at least 3 fingers, show rating UI
-    if (this.chordCaptureSequence.length >= 3) {
-      this.showChordCaptureRating();
-    } else {
-      // Not enough fingers, just clear
-      document.getElementById('chordCaptureStatus').innerHTML = `
-        <div class="warning-box">
-          Capture stopped. Need at least 3 fingers for a valid fingering.
-        </div>
-      `;
-      document.getElementById('chordCaptureActive').style.display = 'none';
-      this.chordCaptureSequence = [];
-    }
+    // Show session summary
+    document.getElementById('chordCaptureStatus').innerHTML = `
+      <div class="info-box">
+        Session complete. Captured ${this.chordCaptureSessionCount} chord fingering(s).
+      </div>
+    `;
+    document.getElementById('chordCaptureActive').style.display = 'none';
+    document.getElementById('chordCaptureRate').style.display = 'none';
+    this.chordCaptureSequence = [];
+    this.chordCaptureSessionCount = 0;
+
+    // Clear message after 2 seconds
+    setTimeout(() => {
+      document.getElementById('chordCaptureStatus').innerHTML = '';
+    }, 2000);
+  }
+
+  /**
+   * Stop chord capture (redirects to session stop or single capture depending on context)
+   */
+  async stopChordCapture() {
+    // If we're in the middle of rating a capture, just stop the session
+    // Otherwise, this is called by the "Stop Capture" button
+    await this.stopChordCaptureSession();
   }
 
   /**
@@ -2054,7 +2103,7 @@ class ExquisFingerings {
   }
 
   /**
-   * Save captured chord fingering
+   * Save captured chord fingering and continue session
    */
   saveChordFingering() {
     const comfort = parseInt(document.getElementById('captureComfort').value);
@@ -2083,29 +2132,52 @@ class ExquisFingerings {
     this.settings.chordFingerings = this.savedChordFingerings;
     saveSettings(this.settings);
 
-    // Show success
-    const chordName = getChordName(this.chordCaptureRoot, this.chordCaptureQuality);
-    document.getElementById('chordCaptureStatus').innerHTML = `
-      <div class="success-box">
-        ✓ Saved ${chordName} fingering (comfort: ${comfort}/5)
-      </div>
-    `;
-
-    // Clear UI
-    document.getElementById('chordCaptureRate').style.display = 'none';
-    this.chordCaptureSequence = [];
+    // Increment session count
+    this.chordCaptureSessionCount++;
 
     // Update list
     this.updateChordFingeringList();
+
+    // Show success and prompt for next capture
+    const chordName = getChordName(this.chordCaptureRoot, this.chordCaptureQuality);
+    document.getElementById('chordCaptureStatus').innerHTML = `
+      <div class="success-box">
+        ✓ Chord fingering ${this.chordCaptureSessionCount} saved! (Comfort: ${comfort}/5)<br/>
+        <strong>Session total:</strong> ${this.chordCaptureSessionCount} fingering(s)
+        <div style="margin-top:8px; border-top:1px solid #4a6; padding-top:8px;">
+          Press pads to capture another chord fingering,<br/>
+          or click "Stop Capture" to finish.
+        </div>
+      </div>
+    `;
+
+    // Clear rating UI and return to capturing state
+    document.getElementById('chordCaptureRate').style.display = 'none';
+    document.getElementById('chordCaptureActive').style.display = 'block';
+    this.chordCaptureSequence = [];
+    this.chordCaptureState = 'capturing';
+
+    // Reset progress display
+    this.updateCaptureProgress();
   }
 
   /**
-   * Discard captured chord fingering
+   * Discard captured chord fingering and continue session
    */
   discardChordFingering() {
+    // Clear rating UI and return to capturing state
     document.getElementById('chordCaptureRate').style.display = 'none';
-    document.getElementById('chordCaptureStatus').innerHTML = '';
+    document.getElementById('chordCaptureActive').style.display = 'block';
+    document.getElementById('chordCaptureStatus').innerHTML = `
+      <div class="info-box">
+        Fingering discarded. Ready to capture next chord.
+      </div>
+    `;
     this.chordCaptureSequence = [];
+    this.chordCaptureState = 'capturing';
+
+    // Reset progress display
+    this.updateCaptureProgress();
   }
 
   /**
@@ -2135,6 +2207,51 @@ class ExquisFingerings {
 
     document.getElementById('exportChordFingerings').style.display = 'block';
     document.getElementById('clearChordFingerings').style.display = 'block';
+  }
+
+  /**
+   * Export all chord fingerings to JSON
+   */
+  exportChordFingerings() {
+    if (this.savedChordFingerings.length === 0) {
+      alert('No chord fingerings to export.');
+      return;
+    }
+
+    const data = {
+      exportedAt: new Date().toISOString(),
+      chordFingerings: this.savedChordFingerings
+    };
+
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chord_fingerings_${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    alert(`Exported ${this.savedChordFingerings.length} chord fingering(s) to JSON file.`);
+  }
+
+  /**
+   * Clear all saved chord fingerings
+   */
+  clearAllChordFingerings() {
+    if (!confirm(`Clear all ${this.savedChordFingerings.length} chord fingering(s)?\n\nThis cannot be undone!`)) {
+      return;
+    }
+
+    this.savedChordFingerings = [];
+    this.settings.chordFingerings = [];
+    saveSettings(this.settings);
+
+    this.updateChordFingeringList();
+    alert('All chord fingerings cleared.');
   }
 }
 
