@@ -436,7 +436,8 @@ class ExquisFingerings {
     this.gridRenderer.setBaseMidi(this.settings.baseMidi);
 
     // During handprint capture, show no pitch class highlights (plain chromatic grid)
-    if (this.handprintMode) {
+    // During chord capture, show only chord highlights (no scale highlights)
+    if (this.handprintMode || this.chordCaptureActive) {
       this.gridRenderer.setHighlightedPCs(new Set());
     } else {
       this.gridRenderer.setHighlightedPCs(this.getHighlightedPCs());
@@ -1887,9 +1888,14 @@ class ExquisFingerings {
       await devMode.enter(0x01); // ZONE_MASK.PADS
       console.log('[ChordCapture] Entered dev mode');
 
-      // Highlight chord across entire grid
+      // Highlight chord across entire grid on hardware
       devMode.highlightChord(pitchClasses, rootPC, 0, 0);
       console.log('[ChordCapture] Highlighted chord:', chordName, 'PCs:', pitchClasses);
+
+      // Highlight chord in webapp grid (two-layer highlighting)
+      this.gridRenderer.setChordHighlight(pitchClasses, rootPC);
+      this.render();
+      console.log('[ChordCapture] Webapp grid updated with chord highlights');
 
       // Set up pad event handler
       devMode.on('padPress', (padId, velocity) => {
@@ -2025,6 +2031,10 @@ class ExquisFingerings {
 
     // Disable MIDI handler
     midiManager.setNoteHandler(null, false);
+
+    // Clear chord highlighting in webapp grid
+    this.gridRenderer.clearChordHighlight();
+    this.render();
 
     this.chordCaptureActive = false;
     this.chordCaptureState = null;

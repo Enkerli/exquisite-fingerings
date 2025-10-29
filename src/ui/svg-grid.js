@@ -19,6 +19,7 @@ export class GridRenderer {
     this.labelMode = 'pc';
     this.baseMidi = 48;
     this.highlightedPCs = new Set();
+    this.chordHighlight = null; // { pitchClasses: Array<number>, rootPC: number } or null
     this.fingeringPattern = null;
     this.fingeringMode = false;
     this.onPadClick = null; // Callback for pad clicks
@@ -57,11 +58,31 @@ export class GridRenderer {
   }
 
   /**
-   * Set highlighted pitch classes
+   * Set highlighted pitch classes (scale/melodic context)
    * @param {Set<number>} pcs - Set of pitch classes to highlight
    */
   setHighlightedPCs(pcs) {
     this.highlightedPCs = pcs;
+  }
+
+  /**
+   * Set chord highlight (chord tone colors on top of scale highlights)
+   * @param {Array<number>} pitchClasses - Chord pitch classes (e.g., [0, 4, 7])
+   * @param {number} rootPC - Root pitch class
+   */
+  setChordHighlight(pitchClasses, rootPC) {
+    if (pitchClasses && pitchClasses.length > 0) {
+      this.chordHighlight = { pitchClasses, rootPC };
+    } else {
+      this.chordHighlight = null;
+    }
+  }
+
+  /**
+   * Clear chord highlight
+   */
+  clearChordHighlight() {
+    this.chordHighlight = null;
   }
 
   /**
@@ -154,9 +175,15 @@ export class GridRenderer {
     poly.setAttribute('fill', '#6aa5ff');
     poly.setAttribute('fill-opacity', '0.12');
 
-    // Add highlighted class if this PC is highlighted
+    // Add highlighted class if this PC is highlighted (scale/melodic layer)
     if (this.highlightedPCs.has(pc)) {
       poly.classList.add('on');
+    }
+
+    // Add chord tone class if in chord highlight mode (chord layer - on top)
+    const chordClass = this._getChordToneClass(pc);
+    if (chordClass) {
+      poly.classList.add(chordClass);
     }
 
     // Add fingering-mode class if enabled
@@ -242,6 +269,42 @@ export class GridRenderer {
       default:
         return pc;
     }
+  }
+
+  /**
+   * Calculate interval name from root for a pitch class
+   * Matches hardware logic in exquis-devmode.js
+   * @private
+   */
+  _calculateInterval(pc, rootPC) {
+    const semitones = (pc - rootPC + 12) % 12;
+
+    switch (semitones) {
+      case 0: return 'root';
+      case 2: return 'ninth';
+      case 3:
+      case 4: return 'third';
+      case 5: return 'eleventh';
+      case 7: return 'fifth';
+      case 9: return 'thirteenth';
+      case 10:
+      case 11: return 'seventh';
+      default: return 'default';
+    }
+  }
+
+  /**
+   * Get chord tone CSS class for a pitch class
+   * @private
+   */
+  _getChordToneClass(pc) {
+    if (!this.chordHighlight) return null;
+
+    const { pitchClasses, rootPC } = this.chordHighlight;
+    if (!pitchClasses.includes(pc)) return null;
+
+    const interval = this._calculateInterval(pc, rootPC);
+    return `chord-${interval}`;
   }
 
   /**

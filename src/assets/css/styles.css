@@ -18,6 +18,16 @@
   --info-bg: #e7f3ff;
   --warning-bg: #fff3cd;
   --success-bg: #d4edda;
+
+  /* Chord tone colors (matching hardware) */
+  --chord-root: rgb(127, 0, 127);        /* Bright magenta */
+  --chord-third: rgb(0, 127, 127);       /* Cyan */
+  --chord-fifth: rgb(127, 127, 0);       /* Yellow */
+  --chord-seventh: rgb(127, 64, 0);      /* Orange */
+  --chord-ninth: rgb(0, 127, 64);        /* Green-cyan */
+  --chord-eleventh: rgb(64, 0, 127);     /* Purple */
+  --chord-thirteenth: rgb(127, 0, 64);   /* Pink */
+  --chord-default: rgb(64, 64, 64);      /* Gray */
 }
 
 * {
@@ -311,6 +321,63 @@ main {
 
 .pad.fingering-mode {
   cursor: crosshair;
+}
+
+/* Chord tone highlighting (two-layer system) */
+.pad.chord-root {
+  fill: var(--chord-root);
+  fill-opacity: 0.8;
+  stroke: var(--chord-root);
+  stroke-width: 3;
+}
+
+.pad.chord-third {
+  fill: var(--chord-third);
+  fill-opacity: 0.75;
+  stroke: var(--chord-third);
+  stroke-width: 2.5;
+}
+
+.pad.chord-fifth {
+  fill: var(--chord-fifth);
+  fill-opacity: 0.7;
+  stroke: var(--chord-fifth);
+  stroke-width: 2.5;
+}
+
+.pad.chord-seventh {
+  fill: var(--chord-seventh);
+  fill-opacity: 0.7;
+  stroke: var(--chord-seventh);
+  stroke-width: 2.5;
+}
+
+.pad.chord-ninth {
+  fill: var(--chord-ninth);
+  fill-opacity: 0.65;
+  stroke: var(--chord-ninth);
+  stroke-width: 2;
+}
+
+.pad.chord-eleventh {
+  fill: var(--chord-eleventh);
+  fill-opacity: 0.65;
+  stroke: var(--chord-eleventh);
+  stroke-width: 2;
+}
+
+.pad.chord-thirteenth {
+  fill: var(--chord-thirteenth);
+  fill-opacity: 0.65;
+  stroke: var(--chord-thirteenth);
+  stroke-width: 2;
+}
+
+.pad.chord-default {
+  fill: var(--chord-default);
+  fill-opacity: 0.6;
+  stroke: var(--chord-default);
+  stroke-width: 2;
 }
 
 .label {
