@@ -2222,26 +2222,15 @@ class ExquisFingerings {
     console.log('[ChordCapture] Chord pitch classes:', this.chordCapturePitchClasses);
     console.log('[ChordCapture] Using baseMidi=0 for dev mode (app setting is', this.settings.baseMidi, 'but dev mode is baseMidi-independent)');
 
-    // Helper: convert chromatic pad ID to pitch class
+    // Helper: convert pad ID to pitch class (device-agnostic)
     const getPCFromPadId = (padId) => {
-      // Find row/col from chromatic pad ID
-      let row = 0, col = 0;
-      for (let r = 0; r < 11; r++) {
-        if (padId >= ROW_START_CHROMATIC[r] && padId < ROW_START_CHROMATIC[r] + getRowLength(r)) {
-          row = r;
-          col = padId - ROW_START_CHROMATIC[r];
-          break;
-        }
-      }
-      // Get intervals pad index for this row/col
-      const intervalsPadIndex = getPadIndex(row, col);
-      // Calculate MIDI note and pitch class
-      // IMPORTANT: Use baseMidi=0 to match the highlightChord() call (dev mode is baseMidi-independent)
-      const midiNote = 0 + intervalsPadIndex;
+      // Use device methods for conversion (works for all devices)
+      const { row, col } = this.device.getRowCol(padId);
+      const midiNote = this.device.getMidiNote(row, col, 0);  // baseMidi=0 to match hardware
       const pc = midiNote % 12;
 
       // Debug logging
-      console.log(`[ChordCapture] Pad ${padId} → row=${row}, col=${col} → intervals=${intervalsPadIndex} → MIDI=${midiNote} (baseMidi=0 for dev mode) → PC=${pc}`);
+      console.log(`[ChordCapture] Pad ${padId} → row=${row}, col=${col} → MIDI=${midiNote} (baseMidi=0) → PC=${pc}`);
 
       return pc;
     };
