@@ -9,10 +9,12 @@
 
 import { BaseDevice, DeviceCapabilities } from '../base-device.js';
 import * as Geometry from '../square-grid-geometry.js';
+import { LaunchpadXDevMode } from './launchpad-x-devmode.js';
 
 export class LaunchpadXDevice extends BaseDevice {
   constructor() {
     super();
+    this.devMode = null;  // LaunchpadXDevMode instance
   }
 
   /**
@@ -112,6 +114,21 @@ export class LaunchpadXDevice extends BaseDevice {
 
   getGridDistance(row1, col1, row2, col2) {
     return Geometry.getGridDistance(row1, col1, row2, col2);
+  }
+
+  /**
+   * Get or create Programmer Mode (DevMode) instance
+   * @param {MIDIOutput} midiOutput - MIDI output device
+   * @returns {LaunchpadXDevMode} Dev mode instance
+   */
+  getDevMode(midiOutput) {
+    if (!this.devMode) {
+      this.devMode = new LaunchpadXDevMode(midiOutput);
+    } else if (midiOutput) {
+      // Update output if provided
+      this.devMode.output = midiOutput;
+    }
+    return this.devMode;
   }
 
   /**

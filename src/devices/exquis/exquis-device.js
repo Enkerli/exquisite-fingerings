@@ -5,12 +5,14 @@
 
 import { BaseDevice, DeviceCapabilities } from '../base-device.js';
 import * as Geometry from './exquis-geometry.js';
+import { ExquisDevMode } from './exquis-devmode.js';
 
 export class ExquisDevice extends BaseDevice {
   constructor() {
     super();
     // Default to intervals mode (musical thirds layout)
     this.currentGridMode = 'intervals';
+    this.devMode = null;  // ExquisDevMode instance
   }
 
   /**
@@ -123,6 +125,21 @@ export class ExquisDevice extends BaseDevice {
 
   getGridMode() {
     return this.currentGridMode;
+  }
+
+  /**
+   * Get or create Developer Mode instance
+   * @param {MIDIOutput} midiOutput - MIDI output device
+   * @returns {ExquisDevMode} Dev mode instance
+   */
+  getDevMode(midiOutput) {
+    if (!this.devMode) {
+      this.devMode = new ExquisDevMode(midiOutput);
+    } else if (midiOutput) {
+      // Update output if provided
+      this.devMode.output = midiOutput;
+    }
+    return this.devMode;
   }
 
   /**

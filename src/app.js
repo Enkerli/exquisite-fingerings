@@ -1978,20 +1978,29 @@ class ExquisFingerings {
       return;
     }
 
-    // Get dev mode instance
-    const devMode = midiManager.getDevMode();
+    // Get dev mode instance from current device
+    const devMode = this.device.getDevMode(midiManager.selectedOutput);
     console.log('[ChordCapture] Dev mode instance:', devMode);
 
     // Set flag BEFORE entering dev mode to prevent timing issues
     this.chordCaptureActive = true;
 
-    // Enter dev mode (pads only)
+    // Enter dev mode (device-specific)
     try {
-      await devMode.enter(0x01); // ZONE_MASK.PADS
-      console.log('[ChordCapture] Entered dev mode');
+      // ExquisDevice: enter(zoneMask), LaunchpadXDevice: enter()
+      if (this.device.type === 'exquis') {
+        await devMode.enter(0x01); // ZONE_MASK.PADS
+      } else {
+        await devMode.enter();
+      }
+      console.log('[ChordCapture] Entered dev mode for', this.device.name);
 
       // Highlight chord across entire grid on hardware (baseMidi=0)
-      devMode.highlightChord(pitchClasses, rootPC, 0, 0);
+      if (this.device.type === 'exquis') {
+        devMode.highlightChord(pitchClasses, rootPC, 0, 0);
+      } else {
+        devMode.highlightChord(pitchClasses, rootPC, 0);
+      }
       console.log('[ChordCapture] Highlighted chord:', chordName, 'PCs:', pitchClasses);
 
       // Highlight chord in webapp grid (baseMidi=0 to match hardware)
@@ -2005,10 +2014,15 @@ class ExquisFingerings {
         this.handleChordCapturePadPress(padId, velocity);
       });
 
-      // Enable MIDI input in developer mode
-      // Pass empty handler - MIDI manager will route dev mode messages automatically
-      midiManager.setNoteHandler(() => {}, true); // true = Developer Mode
-      console.log('[ChordCapture] Enabled MIDI input handler for dev mode');
+      // Enable MIDI input routing to devMode
+      // The devMode will handle the actual MIDI messages
+      midiManager.setNoteHandler((note, velocity) => {
+        // Route to dev mode's MIDI handler
+        const status = velocity > 0 ? 0x90 : 0x80;  // Note On / Note Off
+        const channel = 0x00;  // Channel 1 for Launchpad, Channel 16 for Exquis
+        devMode.handleMidiMessage([status | channel, note, velocity]);
+      }, this.device.type === 'exquis'); // true for Exquis (Developer Mode ch16), false for Launchpad (ch1)
+      console.log('[ChordCapture] Enabled MIDI input handler for', this.device.name);
 
       // Update UI
       document.getElementById('chordCaptureStatus').innerHTML = `
@@ -2128,7 +2142,7 @@ class ExquisFingerings {
     if (!this.chordCaptureActive) return;
 
     // Exit dev mode
-    const devMode = midiManager.getDevMode();
+    const devMode = this.device.getDevMode(midiManager.selectedOutput);
     await devMode.exit();
 
     // Disable MIDI handler
