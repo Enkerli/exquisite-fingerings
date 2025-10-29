@@ -1,27 +1,20 @@
 /**
  * SVG Grid Renderer
- * Handles rendering of the Exquis hex grid
+ * Handles rendering of MIDI grid controllers (Exquis hex, Launchpad square, etc.)
+ * Uses device abstraction to support multiple grid types
  */
 
-import {
-  ROW_COUNT,
-  getRowLength,
-  getPadIndex,
-  getCellCenter,
-  getHexPoints,
-  getViewBox,
-  getMidiNote
-} from '../core/grid.js';
 import { midiToPitchClass } from '../core/music.js';
 import { debugLog } from '../utils/debug.js';
 
 /**
  * Grid Renderer class
- * Manages SVG rendering of the hex grid
+ * Manages SVG rendering using device abstraction
  */
 export class GridRenderer {
-  constructor(svgElement) {
+  constructor(svgElement, device = null) {
     this.svg = svgElement;
+    this.device = device;  // Device instance (BaseDevice subclass)
     this.orientation = 'portrait';
     this.labelMode = 'pc';
     this.baseMidi = 48;
@@ -29,6 +22,14 @@ export class GridRenderer {
     this.fingeringPattern = null;
     this.fingeringMode = false;
     this.onPadClick = null; // Callback for pad clicks
+  }
+
+  /**
+   * Set device instance
+   * @param {BaseDevice} device - Device instance
+   */
+  setDevice(device) {
+    this.device = device;
   }
 
   /**
@@ -91,13 +92,20 @@ export class GridRenderer {
    * Render the complete grid
    */
   render() {
+    if (!this.device) {
+      console.error('[GridRenderer] No device set - cannot render');
+      return;
+    }
+
     debugLog('grid', '[GridRenderer] render() called', {
       svg: this.svg,
+      device: this.device.name,
+      gridType: this.device.gridType,
       orientation: this.orientation,
       labelMode: this.labelMode
     });
 
-    const vb = getViewBox(this.orientation);
+    const vb = this.device.getViewBox(this.orientation);
     this.svg.setAttribute('viewBox', vb.viewBox);
 
     // Clear existing content
@@ -113,15 +121,15 @@ export class GridRenderer {
 
     // Render all pads
     let padCount = 0;
-    for (let row = 0; row < ROW_COUNT; row++) {
-      const cols = getRowLength(row);
+    for (let row = 0; row < this.device.rowCount; row++) {
+      const cols = this.device.getRowLength(row);
       for (let col = 0; col < cols; col++) {
         this._renderPad(gNode, row, col);
         padCount++;
       }
     }
 
-    debugLog('grid', `[GridRenderer] Rendered ${padCount} pads`);
+    debugLog('grid', `[GridRenderer] Rendered ${padCount} pads for ${this.device.name}`);
     this.svg.appendChild(gNode);
     debugLog('grid', '[GridRenderer] Grid appended to SVG');
   }
@@ -131,13 +139,16 @@ export class GridRenderer {
    * @private
    */
   _renderPad(parent, row, col) {
-    const { x: cx, y: cy } = getCellCenter(row, col);
-    const midiNote = getMidiNote(row, col, this.baseMidi);
+    const { x: cx, y: cy } = this.device.getCellCenter(row, col);
+    const midiNote = this.device.getMidiNote(row, col, this.baseMidi);
     const pc = midiToPitchClass(midiNote);
 
-    // Create hexagon
+    // Get pad size based on grid type
+    const padSize = this.device.gridType === 'hex' ? 22 : 14;  // hex radius vs square half-width
+
+    // Create polygon (hex or square)
     const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    poly.setAttribute('points', getHexPoints(cx, cy, 22));
+    poly.setAttribute('points', this.device.getPadPoints(cx, cy, padSize));
     poly.setAttribute('class', 'pad');
     poly.setAttribute('stroke', '#666');
     poly.setAttribute('fill', '#6aa5ff');

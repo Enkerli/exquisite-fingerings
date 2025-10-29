@@ -4,7 +4,7 @@
  */
 
 import { debugLog, errorLog, warnLog } from '../utils/debug.js';
-import { ExquisDevMode } from './exquis-devmode.js';
+import { ExquisDevMode } from '../devices/exquis/exquis-devmode.js';
 
 /**
  * MIDI Manager class

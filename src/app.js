@@ -14,6 +14,7 @@ import { findChordFingerings } from './analysis/chord-matcher.js';
 import { rankFingerings } from './analysis/fingering-scorer.js';
 import { synthesizeFingerings } from './analysis/fingering-synthesizer.js';
 import { getChordPitchClasses, getChordName, analyzeVoicing } from './core/chord-dictionary.js';
+import { ExquisDevice } from './devices/exquis/exquis-device.js';
 
 /**
  * Main App class
@@ -61,11 +62,15 @@ class ExquisFingerings {
     this.chordCaptureSessionCount = 0;  // Count of chord fingerings in current session
     this.savedChordFingerings = this.settings.chordFingerings || [];  // Saved chord fingerings
 
+    // Device instance
+    this.device = new ExquisDevice();
+    debugLog('app', '[APP] Device created:', this.device.name);
+
     // UI Elements
     this.gridElement = document.getElementById('grid');
     debugLog('app', '[APP] Grid element:', this.gridElement);
-    this.gridRenderer = new GridRenderer(this.gridElement);
-    debugLog('app', '[APP] GridRenderer created');
+    this.gridRenderer = new GridRenderer(this.gridElement, this.device);
+    debugLog('app', '[APP] GridRenderer created with device:', this.device.name);
 
     // Initialize
     this.initUI();
