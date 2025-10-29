@@ -76,10 +76,16 @@ export class LaunchpadXDevice extends BaseDevice {
   }
 
   /**
-   * MIDI mapping - chromatic layout
+   * MIDI mapping - chromatic rows in fourths
+   * Each row starts a perfect fourth (5 semitones) above the previous row
+   * Row 0: baseMidi + 0, 1, 2, 3, 4, 5, 6, 7
+   * Row 1: baseMidi + 5, 6, 7, 8, 9, 10, 11, 12
+   * Row 2: baseMidi + 10, 11, 12, 13, 14, 15, 16, 17
+   * etc.
    */
-  getMidiNote(row, col, baseMidi = 48) {
-    return baseMidi + this.getPadIndex(row, col);
+  getMidiNote(row, col, baseMidi = 0) {
+    // Fourths tuning: each row is 5 semitones (perfect fourth) higher
+    return baseMidi + (row * 5) + col;
   }
 
   /**

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Exquisite Fingerings - Exquis Controller Explorer</title>
   <meta name="description" content="Interactive fingering explorer for Intuitive Instruments Exquis hex grid controller" />
-  <script type="module" crossorigin src="./assets/main-ngY0QKJd.js"></script>
+  <script type="module" crossorigin src="./assets/main-CK9HOkqy.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/main-0yoetgAp.css">
 </head>
 <body>
@@ -489,6 +489,18 @@
     <!-- Display Options -->
     <details>
       <summary><h3>Display Options</h3></summary>
+
+      <h4 style="margin-top:0;">Grid Controller</h4>
+      <label>Device Type
+        <select id="deviceType">
+          <option value="exquis" selected>Exquis (hex grid)</option>
+          <option value="launchpad-x">Launchpad X (square grid)</option>
+        </select>
+      </label>
+      <div id="deviceInfo" class="info-box" style="font-size:0.8em;">
+        <strong>Exquis:</strong> 11 rows (6/5 pads), hex grid, thirds layout
+      </div>
+
       <label>Base MIDI (row0 pad0)
         <input id="baseMidi" type="number" value="48" min="0" max="120" />
       </label>

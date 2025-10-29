@@ -16,6 +16,8 @@ import { synthesizeFingerings } from './analysis/fingering-synthesizer.js';
 import { getChordPitchClasses, getChordName, analyzeVoicing } from './core/chord-dictionary.js';
 import { parseChordNotation, isValidChordNotation } from './core/chord-parser.js';
 import { ExquisDevice } from './devices/exquis/exquis-device.js';
+import { LaunchpadXDevice } from './devices/launchpad-x/launchpad-x-device.js';
+import { DeviceFactory } from './devices/device-factory.js';
 
 /**
  * Main App class
@@ -89,6 +91,11 @@ class ExquisFingerings {
    * Initialize UI event handlers
    */
   initUI() {
+    // Device type selector
+    document.getElementById('deviceType')?.addEventListener('change', (e) => {
+      this.switchDevice(e.target.value);
+    });
+
     // Orientation
     document.querySelectorAll('input[name="ori"]').forEach(el => {
       el.addEventListener('change', () => {
@@ -390,9 +397,67 @@ class ExquisFingerings {
   }
 
   /**
+   * Switch to a different device
+   * @param {string} deviceType - Device type ('exquis', 'launchpad-x', etc.)
+   */
+  switchDevice(deviceType) {
+    debugLog('app', `[APP] Switching device to: ${deviceType}`);
+
+    // Create new device instance
+    let newDevice;
+    switch (deviceType) {
+      case 'exquis':
+        newDevice = new ExquisDevice();
+        break;
+      case 'launchpad-x':
+        newDevice = new LaunchpadXDevice();
+        break;
+      default:
+        console.error(`Unknown device type: ${deviceType}`);
+        return;
+    }
+
+    // Update device
+    this.device = newDevice;
+    this.gridRenderer.setDevice(newDevice);
+
+    // Update device info display
+    const infoEl = document.getElementById('deviceInfo');
+    if (infoEl) {
+      if (deviceType === 'exquis') {
+        infoEl.innerHTML = '<strong>Exquis:</strong> 11 rows (6/5 pads), hex grid, thirds layout';
+      } else if (deviceType === 'launchpad-x') {
+        infoEl.innerHTML = '<strong>Launchpad X:</strong> 8x8 square grid, chromatic rows in fourths';
+      }
+    }
+
+    // Update baseMidi default for Launchpads (user preference: start from 0)
+    if (deviceType.startsWith('launchpad')) {
+      this.settings.baseMidi = 0;
+      document.getElementById('baseMidi').value = 0;
+    }
+
+    // Save device type to settings
+    this.settings.deviceType = deviceType;
+    saveSettings(this.settings);
+
+    // Re-render grid
+    this.render();
+    debugLog('app', `[APP] Device switched to: ${newDevice.name}`);
+  }
+
+  /**
    * Load stored settings
    */
   loadStoredSettings() {
+    // Device type
+    if (this.settings.deviceType) {
+      const deviceSelect = document.getElementById('deviceType');
+      if (deviceSelect) {
+        deviceSelect.value = this.settings.deviceType;
+      }
+    }
+
     // Orientation
     const oriRadio = document.querySelector(`input[name="ori"][value="${this.settings.orientation}"]`);
     if (oriRadio) oriRadio.checked = true;
