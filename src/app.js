@@ -14,6 +14,7 @@ import { findChordFingerings } from './analysis/chord-matcher.js';
 import { rankFingerings } from './analysis/fingering-scorer.js';
 import { synthesizeFingerings } from './analysis/fingering-synthesizer.js';
 import { getChordPitchClasses, getChordName, analyzeVoicing } from './core/chord-dictionary.js';
+import { parseChordNotation, isValidChordNotation } from './core/chord-parser.js';
 import { ExquisDevice } from './devices/exquis/exquis-device.js';
 
 /**
@@ -247,6 +248,11 @@ class ExquisFingerings {
       ergoAnalyzer.setHandSize(value);
       this.settings.handSize = value;
       saveSettings(this.settings);
+    });
+
+    // Chord notation text input
+    document.getElementById('chordNotation')?.addEventListener('input', (e) => {
+      this.handleChordNotationInput(e.target.value);
     });
 
     // Chord capture - Hand selection
@@ -1814,6 +1820,37 @@ class ExquisFingerings {
   }
 
   /**
+   * Handle chord notation text input
+   * @param {string} notation - Chord notation string
+   */
+  handleChordNotationInput(notation) {
+    const parsed = parseChordNotation(notation);
+
+    if (parsed) {
+      const { rootPC, quality } = parsed;
+
+      // Update dropdown selectors to match
+      document.getElementById('chordRoot').value = rootPC.toString();
+      document.getElementById('chordQuality').value = quality;
+
+      // Visual feedback: valid notation
+      const input = document.getElementById('chordNotation');
+      input.style.borderColor = '#28a745';
+      input.style.backgroundColor = '#d4edda';
+    } else if (notation.trim().length > 0) {
+      // Visual feedback: invalid notation
+      const input = document.getElementById('chordNotation');
+      input.style.borderColor = '#dc3545';
+      input.style.backgroundColor = '#f8d7da';
+    } else {
+      // Clear visual feedback
+      const input = document.getElementById('chordNotation');
+      input.style.borderColor = '';
+      input.style.backgroundColor = '';
+    }
+  }
+
+  /**
    * Select hand for chord capture
    */
   selectChordCaptureHand(hand) {
@@ -1888,12 +1925,12 @@ class ExquisFingerings {
       await devMode.enter(0x01); // ZONE_MASK.PADS
       console.log('[ChordCapture] Entered dev mode');
 
-      // Highlight chord across entire grid on hardware
+      // Highlight chord across entire grid on hardware (baseMidi=0)
       devMode.highlightChord(pitchClasses, rootPC, 0, 0);
       console.log('[ChordCapture] Highlighted chord:', chordName, 'PCs:', pitchClasses);
 
-      // Highlight chord in webapp grid (two-layer highlighting)
-      this.gridRenderer.setChordHighlight(pitchClasses, rootPC);
+      // Highlight chord in webapp grid (baseMidi=0 to match hardware)
+      this.gridRenderer.setChordHighlight(pitchClasses, rootPC, 0);
       this.render();
       console.log('[ChordCapture] Webapp grid updated with chord highlights');
 

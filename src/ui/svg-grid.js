@@ -69,10 +69,11 @@ export class GridRenderer {
    * Set chord highlight (chord tone colors on top of scale highlights)
    * @param {Array<number>} pitchClasses - Chord pitch classes (e.g., [0, 4, 7])
    * @param {number} rootPC - Root pitch class
+   * @param {number} baseMidi - Base MIDI note for chord highlighting (default 0, matching hardware)
    */
-  setChordHighlight(pitchClasses, rootPC) {
+  setChordHighlight(pitchClasses, rootPC, baseMidi = 0) {
     if (pitchClasses && pitchClasses.length > 0) {
-      this.chordHighlight = { pitchClasses, rootPC };
+      this.chordHighlight = { pitchClasses, rootPC, baseMidi };
     } else {
       this.chordHighlight = null;
     }
@@ -181,7 +182,7 @@ export class GridRenderer {
     }
 
     // Add chord tone class if in chord highlight mode (chord layer - on top)
-    const chordClass = this._getChordToneClass(pc);
+    const chordClass = this._getChordToneClass(row, col);
     if (chordClass) {
       poly.classList.add(chordClass);
     }
@@ -294,13 +295,20 @@ export class GridRenderer {
   }
 
   /**
-   * Get chord tone CSS class for a pitch class
+   * Get chord tone CSS class for a given row/col position
+   * @param {number} row - Row index
+   * @param {number} col - Column index
    * @private
    */
-  _getChordToneClass(pc) {
+  _getChordToneClass(row, col) {
     if (!this.chordHighlight) return null;
 
-    const { pitchClasses, rootPC } = this.chordHighlight;
+    const { pitchClasses, rootPC, baseMidi } = this.chordHighlight;
+
+    // Calculate MIDI note using chord's baseMidi (matches hardware)
+    const midiNote = this.device.getMidiNote(row, col, baseMidi);
+    const pc = midiNote % 12;
+
     if (!pitchClasses.includes(pc)) return null;
 
     const interval = this._calculateInterval(pc, rootPC);
