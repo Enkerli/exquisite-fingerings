@@ -205,6 +205,12 @@ class ExquisFingerings {
         this.updateMIDIStatus();
       }
     });
+    document.getElementById('midiInputDevice').addEventListener('change', (e) => {
+      if (e.target.value) {
+        midiManager.selectInputDevice(e.target.value);
+        this.updateMIDIStatus();
+      }
+    });
 
     // MIDI Hold Duration
     const holdDurationSlider = document.getElementById('midiHoldDuration');
@@ -800,18 +806,43 @@ class ExquisFingerings {
    * Update MIDI device list
    */
   updateMIDIDeviceList() {
-    const select = document.getElementById('midiDevice');
-    const devices = midiManager.getOutputDevices();
+    // Update output devices
+    const outputSelect = document.getElementById('midiDevice');
+    const outputDevices = midiManager.getOutputDevices();
 
-    select.innerHTML = '<option value="">-- Select device --</option>';
-    devices.forEach(device => {
+    outputSelect.innerHTML = '<option value="">-- Select output --</option>';
+    outputDevices.forEach(device => {
       const option = document.createElement('option');
       option.value = device.id;
       option.textContent = device.name;
-      select.appendChild(option);
+      outputSelect.appendChild(option);
     });
+    outputSelect.disabled = outputDevices.length === 0;
 
-    select.disabled = devices.length === 0;
+    // Update input devices
+    const inputSelect = document.getElementById('midiInputDevice');
+    const inputDevices = midiManager.getInputDevices();
+
+    inputSelect.innerHTML = '<option value="">-- Select input --</option>';
+    inputDevices.forEach(device => {
+      const option = document.createElement('option');
+      option.value = device.id;
+      option.textContent = device.name;
+      inputSelect.appendChild(option);
+    });
+    inputSelect.disabled = inputDevices.length === 0;
+
+    // Auto-select matching Launchpad X ports if available
+    const launchpadOutput = outputDevices.find(d => d.name.includes('Launchpad X') && d.name.includes('MIDI In'));
+    const launchpadInput = inputDevices.find(d => d.name.includes('Launchpad X') && d.name.includes('MIDI Out'));
+
+    if (launchpadOutput && launchpadInput && this.device.type === 'launchpad-x') {
+      midiManager.selectOutputDevice(launchpadOutput.id);
+      midiManager.selectInputDevice(launchpadInput.id);
+      outputSelect.value = launchpadOutput.id;
+      inputSelect.value = launchpadInput.id;
+      console.log('[MIDI] Auto-selected Launchpad X ports:', launchpadOutput.name, launchpadInput.name);
+    }
   }
 
   /**

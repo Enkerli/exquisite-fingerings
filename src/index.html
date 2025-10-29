@@ -523,8 +523,13 @@
         MIDI not available (use Chrome/Brave/Edge)
       </div>
       <button id="enableMidi" style="width:100%;">Enable MIDI</button>
-      <label>MIDI Device
+      <label>MIDI Output (to hardware)
         <select id="midiDevice" disabled>
+          <option value="">-- No devices --</option>
+        </select>
+      </label>
+      <label>MIDI Input (from hardware)
+        <select id="midiInputDevice" disabled>
           <option value="">-- No devices --</option>
         </select>
       </label>

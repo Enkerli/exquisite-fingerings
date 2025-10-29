@@ -4,7 +4,6 @@
  */
 
 import { debugLog, errorLog, warnLog } from '../utils/debug.js';
-import { ExquisDevMode } from '../devices/exquis/exquis-devmode.js';
 
 /**
  * MIDI Manager class
@@ -14,12 +13,12 @@ export class MIDIManager {
   constructor() {
     this.midiAccess = null;
     this.selectedOutput = null;
+    this.selectedInput = null;
     this.isSupported = typeof navigator !== 'undefined' && 'requestMIDIAccess' in navigator;
     this.activeNotes = new Map(); // Track currently playing notes for hold functionality
     this.holdDuration = 1000; // Default hold duration in ms
     this.octaveRange = 0; // ±octaves to send
     this.isHolding = false; // For continuous hold mode
-    this.devMode = null; // ExquisDevMode instance
   }
 
   /**
@@ -59,6 +58,18 @@ export class MIDIManager {
   }
 
   /**
+   * Get list of available MIDI input devices
+   * @returns {Array<{id: string, name: string}>} Available devices
+   */
+  getInputDevices() {
+    if (!this.midiAccess) return [];
+    return Array.from(this.midiAccess.inputs.values()).map(input => ({
+      id: input.id,
+      name: input.name
+    }));
+  }
+
+  /**
    * Select MIDI output device
    * @param {string} deviceId - Device ID
    * @returns {boolean} Success status
@@ -68,24 +79,24 @@ export class MIDIManager {
     const output = this.midiAccess.outputs.get(deviceId);
     if (output) {
       this.selectedOutput = output;
-      // Re-initialize dev mode with new output
-      if (this.devMode) {
-        this.devMode.output = output;
-      }
       return true;
     }
     return false;
   }
 
   /**
-   * Get or create Exquis Developer Mode instance
-   * @returns {ExquisDevMode} Dev mode instance
+   * Select MIDI input device
+   * @param {string} deviceId - Device ID
+   * @returns {boolean} Success status
    */
-  getDevMode() {
-    if (!this.devMode) {
-      this.devMode = new ExquisDevMode(this.selectedOutput);
+  selectInputDevice(deviceId) {
+    if (!this.midiAccess) return false;
+    const input = this.midiAccess.inputs.get(deviceId);
+    if (input) {
+      this.selectedInput = input;
+      return true;
     }
-    return this.devMode;
+    return false;
   }
 
   /**
@@ -253,23 +264,25 @@ export class MIDIManager {
   /**
    * Set note handler for MIDI input
    * Used for capturing handprints and other input scenarios
-   * @param {Function|null} handler - Function(padID, velocity) or null to clear
+   * @param {Function|null} handler - Function(note, velocity) or null to clear
    * @param {boolean} devMode - If true, listen for Developer Mode messages on channel 16
    */
   setNoteHandler(handler, devMode = false) {
     this.noteHandler = handler;
     this.devModeActive = devMode;
 
-    // Listen to all input devices
+    // Clear all input handlers first
     if (this.midiAccess) {
       const inputs = this.midiAccess.inputs.values();
       for (const input of inputs) {
-        if (handler) {
-          input.onmidimessage = (message) => this._handleMidiInput(message);
-        } else {
-          input.onmidimessage = null;
-        }
+        input.onmidimessage = null;
       }
+    }
+
+    // Set handler on selected input device only
+    if (handler && this.selectedInput) {
+      this.selectedInput.onmidimessage = (message) => this._handleMidiInput(message);
+      console.log('[MIDI] Listening to input device:', this.selectedInput.name);
     }
   }
 
@@ -282,48 +295,26 @@ export class MIDIManager {
     const messageType = status & 0xF0;
     const channel = status & 0x0F;
 
-    // Log ALL incoming MIDI messages when in Developer Mode (if debug enabled)
-    if (this.devModeActive) {
-      debugLog('midi', '[MIDI IN] Status:', status.toString(16).padStart(2, '0').toUpperCase(),
-                  'Channel:', channel,
-                  'Note/Data1:', note,
-                  'Velocity/Data2:', velocity,
-                  'Type:', messageType.toString(16).padStart(2, '0').toUpperCase());
+    // Log ALL incoming MIDI messages (if debug enabled)
+    debugLog('midi', '[MIDI IN] Status:', status.toString(16).padStart(2, '0').toUpperCase(),
+                'Channel:', channel,
+                'Note/Data1:', note,
+                'Velocity/Data2:', velocity,
+                'Type:', messageType.toString(16).padStart(2, '0').toUpperCase());
 
-      // Pass message to dev mode handler
-      if (this.devMode) {
-        this.devMode.handleMidiMessage(message.data);
-      }
-    }
-
-    // In Developer Mode, listen on channel 16 (index 15) for pad IDs
-    if (this.devModeActive && channel === 15) {
-      debugLog('midi', '[DEV MODE] Channel 16 message detected! Pad ID:', note, 'Velocity:', velocity);
-      // Developer Mode: 9F [pad 0-60] 7F (press), 8F [pad 0-60] 00 (release)
-      if (messageType === 0x90 || messageType === 0x80) {
-        const actualVelocity = messageType === 0x80 ? 0 : velocity;
-        const padID = note; // In dev mode, note IS the pad ID (0-60)
-        debugLog('midi', '[DEV MODE] Triggering handler with pad ID:', padID, 'velocity:', actualVelocity);
-        if (this.noteHandler) {
-          this.noteHandler(padID, actualVelocity);
-        }
-      }
-      return;
-    }
-
-    // Normal mode: accept Note On/Off on any channel
     // Only accept Note On (0x90) and Note Off (0x80) messages
     // Filter out: Polyphonic Aftertouch (0xA0), Control Change (0xB0),
     // Channel Pressure (0xD0), Pitch Bend (0xE0)
     if (messageType === 0x90 || messageType === 0x80) {
       const actualVelocity = messageType === 0x80 ? 0 : velocity;
-      debugLog('midi', '[NORMAL MODE] Note event - Note:', note, 'Velocity:', actualVelocity);
-      // Only trigger handler for actual note events (velocity > 0 for Note On)
+      debugLog('midi', '[MIDI] Note event - Note:', note, 'Velocity:', actualVelocity, 'Channel:', channel);
+
+      // Pass to handler (handler will route to device-specific devMode)
       if (this.noteHandler) {
         this.noteHandler(note, actualVelocity);
       }
     }
-    // Ignore all other message types during capture
+    // Ignore all other message types
   }
 
   /**
@@ -345,28 +336,6 @@ export class MIDIManager {
     } catch (err) {
       errorLog('[SYSEX] ✗ Send error:', err);
     }
-  }
-
-  /**
-   * Enter Exquis Developer Mode (pads only)
-   * Sends: F0 00 21 7E 7F 00 01 F7
-   */
-  enterExquisDeveloperMode() {
-    debugLog('midi', '[DEV MODE] 🔧 Entering Exquis Developer Mode...');
-    const sysex = [0xF0, 0x00, 0x21, 0x7E, 0x7F, 0x00, 0x01, 0xF7];
-    this.sendSysEx(sysex);
-    debugLog('midi', '[DEV MODE] ✓ Developer Mode command sent (pads should now send pad IDs on channel 16)');
-  }
-
-  /**
-   * Exit Exquis Developer Mode
-   * Sends: F0 00 21 7E 7F 00 00 F7
-   */
-  exitExquisDeveloperMode() {
-    debugLog('midi', '[DEV MODE] 🔧 Exiting Exquis Developer Mode...');
-    const sysex = [0xF0, 0x00, 0x21, 0x7E, 0x7F, 0x00, 0x00, 0xF7];
-    this.sendSysEx(sysex);
-    debugLog('midi', '[DEV MODE] ✓ Exit command sent (pads should return to normal mode)');
   }
 
   /**

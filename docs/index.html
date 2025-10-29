@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Exquisite Fingerings - Exquis Controller Explorer</title>
   <meta name="description" content="Interactive fingering explorer for Intuitive Instruments Exquis hex grid controller" />
-  <script type="module" crossorigin src="./assets/main-lcNaWQsv.js"></script>
+  <script type="module" crossorigin src="./assets/main-DAsz_cWW.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/main-0yoetgAp.css">
 </head>
 <body>
@@ -524,8 +524,13 @@
         MIDI not available (use Chrome/Brave/Edge)
       </div>
       <button id="enableMidi" style="width:100%;">Enable MIDI</button>
-      <label>MIDI Device
+      <label>MIDI Output (to hardware)
         <select id="midiDevice" disabled>
+          <option value="">-- No devices --</option>
+        </select>
+      </label>
+      <label>MIDI Input (from hardware)
+        <select id="midiInputDevice" disabled>
           <option value="">-- No devices --</option>
         </select>
       </label>
